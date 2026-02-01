@@ -8,6 +8,10 @@ import type {
   CreateCardInput,
   CreateDeckInput,
   Deck,
+  DeckDeletePreview,
+  MoveDeckInput,
+  NextReviewInfo,
+  ReviewSession,
   Scheduling,
   Stats,
 } from '../shared/types';
@@ -45,6 +49,7 @@ export class CardCrafterDB {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.ensureSchema();
+    this.ensureSessionSchema();
     this.ensureDefaultDeck();
   }
 
@@ -104,6 +109,20 @@ export class CardCrafterDB {
         sourceId TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
         PRIMARY KEY (cardId, sourceId)
       );
+    `);
+  }
+
+  private ensureSessionSchema() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS review_sessions (
+        id TEXT PRIMARY KEY,
+        deckId TEXT REFERENCES decks(id) ON DELETE CASCADE,
+        startedAt INTEGER NOT NULL,
+        endedAt INTEGER,
+        cardsReviewed INTEGER NOT NULL DEFAULT 0,
+        cardsRepeated INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_sessions_deck ON review_sessions(deckId);
     `);
   }
 
@@ -486,6 +505,257 @@ export class CardCrafterDB {
     }
 
     return streak;
+  }
+
+  // Session Management
+  startReviewSession(deckId: string | null): ReviewSession {
+    const session: ReviewSession = {
+      id: randomUUID(),
+      deckId,
+      startedAt: Date.now(),
+      endedAt: null,
+      cardsReviewed: 0,
+      cardsRepeated: 0,
+    };
+    this.db
+      .prepare(
+        'INSERT INTO review_sessions (id, deckId, startedAt, endedAt, cardsReviewed, cardsRepeated) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        session.id,
+        session.deckId,
+        session.startedAt,
+        session.endedAt,
+        session.cardsReviewed,
+        session.cardsRepeated,
+      );
+    return session;
+  }
+
+  endReviewSession(sessionId: string): ReviewSession {
+    const now = Date.now();
+    this.db
+      .prepare('UPDATE review_sessions SET endedAt = ? WHERE id = ?')
+      .run(now, sessionId);
+    const row = this.db
+      .prepare('SELECT * FROM review_sessions WHERE id = ?')
+      .get(sessionId) as ReviewSession;
+    return row;
+  }
+
+  // Next Review Info
+  getNextReviewInfo(deckId: string | null): NextReviewInfo {
+    const now = Date.now();
+    const row = this.db
+      .prepare(
+        `
+      SELECT MIN(s.dueAt) as nextDueAt, COUNT(*) as count
+      FROM scheduling s
+      JOIN cards c ON c.id = s.cardId
+      WHERE s.dueAt > ? AND (? IS NULL OR c.deckId = ?)
+    `,
+      )
+      .get(now, deckId, deckId) as { nextDueAt: number | null; count: number };
+
+    if (!row.nextDueAt) {
+      return {
+        nextDueAt: null,
+        nextDueCardCount: 0,
+        formattedTime: 'Keine anstehenden Reviews',
+      };
+    }
+
+    const formattedTime = this.formatNextReviewTime(row.nextDueAt);
+    return {
+      nextDueAt: row.nextDueAt,
+      nextDueCardCount: row.count,
+      formattedTime,
+    };
+  }
+
+  private formatNextReviewTime(timestamp: number): string {
+    const now = Date.now();
+    const diff = timestamp - now;
+    const minutes = Math.floor(diff / (60 * 1000));
+    const hours = Math.floor(diff / (60 * 60 * 1000));
+    const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+
+    if (minutes < 1) return 'jetzt';
+    if (minutes < 60) return `in ${minutes} Minuten`;
+    if (hours < 24) return `in ${hours} Stunden`;
+    if (days === 1) return 'morgen';
+    return `in ${days} Tagen`;
+  }
+
+  // Priority Card Loading (poor cards first)
+  getDueCardWithPriority(
+    deckId: string | null,
+    poorCardIds: string[],
+  ): CardWithScheduling | null {
+    // Zuerst versuchen, eine Poor Card zu laden
+    if (poorCardIds.length > 0) {
+      const placeholders = poorCardIds.map(() => '?').join(',');
+      const deckFilter = deckId ? 'AND c.deckId = ?' : '';
+      const params = deckId ? [...poorCardIds, deckId] : poorCardIds;
+
+      const row = this.db
+        .prepare(
+          `
+        SELECT c.id, c.deckId, c.type, c.front, c.back, c.clozeText, c.tagsJson,
+               c.createdAt, c.updatedAt,
+               s.cardId, s.n, s.intervalDays, s.ef, s.dueAt, s.lastReviewedAt
+        FROM cards c
+        JOIN scheduling s ON s.cardId = c.id
+        WHERE c.id IN (${placeholders}) ${deckFilter}
+        ORDER BY RANDOM()
+        LIMIT 1
+      `,
+        )
+        .get(...params) as DbCardWithScheduleRow | undefined;
+
+      if (row) return this.mapCardWithSchedule(row);
+    }
+
+    // Fallback auf normale Due Card
+    return this.getDueCard(deckId);
+  }
+
+  // Deck Management
+  moveDeck(deckId: string, newParentId: string | null): Deck {
+    // Validierung: Deck existiert
+    const deck = this.db
+      .prepare('SELECT * FROM decks WHERE id = ?')
+      .get(deckId) as Deck | undefined;
+    if (!deck) {
+      throw new Error('Deck not found');
+    }
+
+    // Verhindere Circular Reference
+    if (deckId === newParentId) {
+      throw new Error('Cannot move deck into itself');
+    }
+
+    if (newParentId && this.isDescendant(deckId, newParentId)) {
+      throw new Error('Cannot move deck into its own descendant');
+    }
+
+    // Validiere Parent existiert
+    if (newParentId) {
+      const parent = this.db
+        .prepare('SELECT * FROM decks WHERE id = ?')
+        .get(newParentId);
+      if (!parent) {
+        throw new Error('Target parent deck not found');
+      }
+    }
+
+    // Move durchführen
+    this.db
+      .prepare('UPDATE decks SET parentId = ? WHERE id = ?')
+      .run(newParentId, deckId);
+
+    return this.db
+      .prepare('SELECT * FROM decks WHERE id = ?')
+      .get(deckId) as Deck;
+  }
+
+  private isDescendant(ancestorId: string, potentialDescendantId: string): boolean {
+    let current = potentialDescendantId;
+    const visited = new Set<string>();
+
+    while (current) {
+      if (visited.has(current)) return false; // Cycle detection
+      visited.add(current);
+
+      if (current === ancestorId) return true;
+
+      const deck = this.db
+        .prepare('SELECT parentId FROM decks WHERE id = ?')
+        .get(current) as { parentId: string | null } | undefined;
+      if (!deck || !deck.parentId) return false;
+      current = deck.parentId;
+    }
+
+    return false;
+  }
+
+  getDeletePreview(deckId: string): DeckDeletePreview {
+    const deck = this.db
+      .prepare('SELECT name FROM decks WHERE id = ?')
+      .get(deckId) as { name: string } | undefined;
+    if (!deck) {
+      throw new Error('Deck not found');
+    }
+
+    // Descendant IDs sammeln
+    const descendantIds = this.getDescendantIds(deckId);
+    const allAffectedIds = [deckId, ...descendantIds];
+
+    // Child Count (direkte Children)
+    const childCount = this.db
+      .prepare('SELECT COUNT(*) as count FROM decks WHERE parentId = ?')
+      .get(deckId) as { count: number };
+
+    // Affected Deck Names
+    const placeholders = allAffectedIds.map(() => '?').join(',');
+    const affectedDecks = this.db
+      .prepare(`SELECT name FROM decks WHERE id IN (${placeholders})`)
+      .all(...allAffectedIds) as { name: string }[];
+
+    // Total Card Count
+    const cardCount = this.db
+      .prepare(
+        `SELECT COUNT(*) as count FROM cards WHERE deckId IN (${placeholders})`,
+      )
+      .get(...allAffectedIds) as { count: number };
+
+    return {
+      deckName: deck.name,
+      childDeckCount: childCount.count,
+      totalCardCount: cardCount.count,
+      affectedDeckNames: affectedDecks.map((d) => d.name),
+    };
+  }
+
+  private getDescendantIds(deckId: string): string[] {
+    const result: string[] = [];
+    const queue: string[] = [deckId];
+    const visited = new Set<string>();
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+
+      const children = this.db
+        .prepare('SELECT id FROM decks WHERE parentId = ?')
+        .all(current) as { id: string }[];
+      for (const child of children) {
+        result.push(child.id);
+        queue.push(child.id);
+      }
+    }
+
+    return result;
+  }
+
+  deleteDeck(deckId: string, mode: 'cascade' | 'reparent'): void {
+    const deck = this.db
+      .prepare('SELECT parentId FROM decks WHERE id = ?')
+      .get(deckId) as { parentId: string | null } | undefined;
+    if (!deck) {
+      throw new Error('Deck not found');
+    }
+
+    if (mode === 'reparent') {
+      // Children eine Ebene hochschieben
+      this.db
+        .prepare('UPDATE decks SET parentId = ? WHERE parentId = ?')
+        .run(deck.parentId, deckId);
+    }
+
+    // Deck löschen (CASCADE handled children in DB if mode === 'cascade')
+    this.db.prepare('DELETE FROM decks WHERE id = ?').run(deckId);
   }
 }
 

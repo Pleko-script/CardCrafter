@@ -12,7 +12,15 @@ import {
   Star,
 } from 'lucide-react';
 
-import type { Card, CardWithScheduling, Deck, Stats } from '../shared/types';
+import type {
+  Card,
+  CardWithScheduling,
+  Deck,
+  DeckDeletePreview,
+  NextReviewInfo,
+  ReviewSession,
+  Stats,
+} from '../shared/types';
 import { Badge } from './components/ui/badge';
 import { Button } from './components/ui/button';
 import { Card as CardShell } from './components/ui/card';
@@ -44,6 +52,63 @@ const emptyStats: Stats = {
   deckProgress: 0,
 };
 
+function DeckContextMenu({
+  deck,
+  onMove,
+  onDelete,
+}: {
+  deck: DeckNode;
+  onMove: (deckId: string) => void;
+  onDelete: (deckId: string) => void;
+}) {
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
+        aria-label="Deck-Optionen"
+      >
+        ⋮
+      </button>
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+          <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-md border border-border bg-background shadow-lg">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm hover:bg-muted"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMove(deck.id);
+                setIsOpen(false);
+              }}
+            >
+              📁 Deck verschieben...
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(deck.id);
+                setIsOpen(false);
+              }}
+            >
+              🗑️ Deck löschen...
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function buildDeckTree(decks: Deck[]): DeckNode[] {
   const map = new Map<string, DeckNode>();
   for (const deck of decks) {
@@ -70,54 +135,61 @@ function DeckTreeItem({
   level,
   selectedId,
   onSelect,
+  onMove,
+  onDelete,
 }: {
   node: DeckNode;
   level: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onMove: (deckId: string) => void;
+  onDelete: (deckId: string) => void;
 }) {
   const [open, setOpen] = React.useState(true);
   const hasChildren = node.children.length > 0;
 
   return (
     <div>
-      <button
-        type="button"
-        className={cn(
-          'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted',
-          selectedId === node.id && 'bg-secondary text-foreground',
-        )}
-        style={{ paddingLeft: 12 + level * 14 }}
-        onClick={() => onSelect(node.id)}
-        aria-current={selectedId === node.id ? 'page' : undefined}
-      >
-        {hasChildren && (
-          <span
-            className={cn(
-              'text-muted-foreground transition',
-              open ? 'rotate-90' : '',
-            )}
-            aria-hidden="true"
-          >
-            <ChevronDown size={16} />
-          </span>
-        )}
-        <FolderTree size={16} className="text-muted-foreground" />
-        <span className="flex-1">{node.name}</span>
-        {hasChildren && (
-          <button
-            type="button"
-            className="text-xs text-muted-foreground hover:text-foreground"
-            onClick={(event) => {
-              event.stopPropagation();
-              setOpen((prev) => !prev);
-            }}
-            aria-label={open ? 'Unterdecks einklappen' : 'Unterdecks ausklappen'}
-          >
-            {open ? '–' : '+'}
-          </button>
-        )}
-      </button>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className={cn(
+            'flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted',
+            selectedId === node.id && 'bg-secondary text-foreground',
+          )}
+          style={{ paddingLeft: 12 + level * 14 }}
+          onClick={() => onSelect(node.id)}
+          aria-current={selectedId === node.id ? 'page' : undefined}
+        >
+          {hasChildren && (
+            <span
+              className={cn(
+                'text-muted-foreground transition',
+                open ? 'rotate-90' : '',
+              )}
+              aria-hidden="true"
+            >
+              <ChevronDown size={16} />
+            </span>
+          )}
+          <FolderTree size={16} className="text-muted-foreground" />
+          <span className="flex-1">{node.name}</span>
+          {hasChildren && (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpen((prev) => !prev);
+              }}
+              aria-label={open ? 'Unterdecks einklappen' : 'Unterdecks ausklappen'}
+            >
+              {open ? '–' : '+'}
+            </button>
+          )}
+        </button>
+        <DeckContextMenu deck={node} onMove={onMove} onDelete={onDelete} />
+      </div>
       {hasChildren && open && (
         <div className="mt-1 space-y-1">
           {node.children.map((child) => (
@@ -127,6 +199,8 @@ function DeckTreeItem({
               level={level + 1}
               selectedId={selectedId}
               onSelect={onSelect}
+              onMove={onMove}
+              onDelete={onDelete}
             />
           ))}
         </div>
@@ -147,6 +221,16 @@ export function App() {
   const [dueCard, setDueCard] = React.useState<CardWithScheduling | null>(null);
   const [stats, setStats] = React.useState<Stats>(emptyStats);
   const [reviewFlipped, setReviewFlipped] = React.useState(false);
+  const [hasFlippedCurrentCard, setHasFlippedCurrentCard] = React.useState(false);
+  const [currentSession, setCurrentSession] = React.useState<ReviewSession | null>(null);
+  const [poorCardIds, setPoorCardIds] = React.useState<string[]>([]);
+  const [nextReviewInfo, setNextReviewInfo] = React.useState<NextReviewInfo | null>(null);
+  const [sessionMode, setSessionMode] = React.useState<'regular' | 'poor-repetition' | 'completed'>('regular');
+  const [moveDeckId, setMoveDeckId] = React.useState<string | null>(null);
+  const [moveTargetId, setMoveTargetId] = React.useState<string | null>(null);
+  const [deleteDeckId, setDeleteDeckId] = React.useState<string | null>(null);
+  const [deletePreview, setDeletePreview] = React.useState<DeckDeletePreview | null>(null);
+  const [deleteMode, setDeleteMode] = React.useState<'cascade' | 'reparent'>('cascade');
   const [deckName, setDeckName] = React.useState('');
   const [deckPath, setDeckPath] = React.useState('');
   const [cardFront, setCardFront] = React.useState('');
@@ -185,6 +269,7 @@ export function App() {
       const next = await window.cardcrafter.getDueCard(deckId);
       setDueCard(next);
       setReviewFlipped(false);
+      setHasFlippedCurrentCard(false);
       setLoading((prev) => ({ ...prev, due: false }));
     },
     [],
@@ -194,6 +279,25 @@ export function App() {
     const data = await window.cardcrafter.getStats(deckId);
     setStats(data);
   }, []);
+
+  const startSession = React.useCallback(async () => {
+    const session = await window.cardcrafter.startReviewSession(selectedDeckId);
+    setCurrentSession(session);
+    setPoorCardIds([]);
+    setSessionMode('regular');
+  }, [selectedDeckId]);
+
+  const endSession = React.useCallback(async () => {
+    if (!currentSession) return;
+    await window.cardcrafter.endReviewSession(currentSession.id);
+    setCurrentSession(null);
+    setSessionMode('completed');
+  }, [currentSession]);
+
+  const loadNextReviewInfo = React.useCallback(async () => {
+    const info = await window.cardcrafter.getNextReviewInfo(selectedDeckId);
+    setNextReviewInfo(info);
+  }, [selectedDeckId]);
 
   React.useEffect(() => {
     loadDecks();
@@ -205,6 +309,20 @@ export function App() {
     loadDueCard(selectedDeckId);
     loadStats(selectedDeckId);
   }, [selectedDeckId, loadCards, loadDueCard, loadStats]);
+
+  // Session starten beim Wechsel zum Review-Tab
+  React.useEffect(() => {
+    if (activeTab === 'review' && !currentSession && selectedDeckId) {
+      startSession();
+    }
+  }, [activeTab, currentSession, selectedDeckId, startSession]);
+
+  // Next Review Info laden
+  React.useEffect(() => {
+    if (selectedDeckId) {
+      loadNextReviewInfo();
+    }
+  }, [selectedDeckId, loadNextReviewInfo]);
 
   const handleCreateDeck = async () => {
     if (!deckName.trim() && !deckPath.trim()) return;
@@ -243,18 +361,55 @@ export function App() {
 
   const handleReview = React.useCallback(
     async (q: number) => {
-      if (!dueCard) return;
+      if (!dueCard || !hasFlippedCurrentCard) return;
+
+      // Track poor cards (q < 3)
+      if (q < 3 && !poorCardIds.includes(dueCard.id)) {
+        setPoorCardIds((prev) => [...prev, dueCard.id]);
+      }
+
+      // Review durchführen
       await window.cardcrafter.reviewCard({
         cardId: dueCard.id,
         q,
         durationMs: null,
       });
+
       if (selectedDeckId) {
-        await loadDueCard(selectedDeckId);
+        // Nächste Karte laden (ggf. aus Poor Queue)
+        const poorQueue = sessionMode === 'poor-repetition' ? poorCardIds : [];
+        const nextCard = await window.cardcrafter.getDueCardWithPriority(
+          selectedDeckId,
+          poorQueue,
+        );
+
+        if (!nextCard && sessionMode === 'regular' && poorCardIds.length > 0) {
+          // Keine Due Cards mehr, aber Poor Cards vorhanden
+          setSessionMode('poor-repetition');
+          setDueCard(null);
+        } else if (!nextCard) {
+          // Session komplett beendet
+          await endSession();
+          await loadNextReviewInfo();
+        } else {
+          setDueCard(nextCard);
+          setReviewFlipped(false);
+          setHasFlippedCurrentCard(false);
+        }
+
         await loadStats(selectedDeckId);
       }
     },
-    [dueCard, selectedDeckId, loadDueCard, loadStats],
+    [
+      dueCard,
+      hasFlippedCurrentCard,
+      selectedDeckId,
+      sessionMode,
+      poorCardIds,
+      endSession,
+      loadNextReviewInfo,
+      loadStats,
+    ],
   );
 
   const handleSnooze = React.useCallback(async () => {
@@ -265,6 +420,60 @@ export function App() {
       await loadStats(selectedDeckId);
     }
   }, [dueCard, selectedDeckId, loadDueCard, loadStats]);
+
+  const handleMoveDeck = async () => {
+    if (!moveDeckId) return;
+
+    try {
+      await window.cardcrafter.moveDeck({
+        deckId: moveDeckId,
+        newParentId: moveTargetId,
+      });
+      await loadDecks();
+      setMoveDeckId(null);
+      setMoveTargetId(null);
+    } catch (error) {
+      alert(`Fehler beim Verschieben: ${(error as Error).message}`);
+    }
+  };
+
+  const loadDeletePreview = async (deckId: string) => {
+    try {
+      const preview = await window.cardcrafter.getDeletePreview(deckId);
+      setDeletePreview(preview);
+    } catch (error) {
+      alert(`Fehler beim Laden der Vorschau: ${(error as Error).message}`);
+    }
+  };
+
+  const handleDeleteDeck = async () => {
+    if (!deleteDeckId) return;
+
+    try {
+      await window.cardcrafter.deleteDeck({
+        deckId: deleteDeckId,
+        mode: deleteMode,
+      });
+      await loadDecks();
+
+      // Wenn gelöschtes Deck ausgewählt war, deselektieren
+      if (selectedDeckId === deleteDeckId) {
+        setSelectedDeckId(null);
+      }
+
+      setDeleteDeckId(null);
+      setDeletePreview(null);
+    } catch (error) {
+      alert(`Fehler beim Löschen: ${(error as Error).message}`);
+    }
+  };
+
+  // Preview laden wenn Delete-Dialog öffnet
+  React.useEffect(() => {
+    if (deleteDeckId) {
+      loadDeletePreview(deleteDeckId);
+    }
+  }, [deleteDeckId]);
 
   React.useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -277,9 +486,11 @@ export function App() {
       if (event.code === 'Space') {
         event.preventDefault();
         setReviewFlipped((prev) => !prev);
+        setHasFlippedCurrentCard(true);
         return;
       }
       if (event.key >= '0' && event.key <= '5') {
+        if (!hasFlippedCurrentCard) return;
         handleReview(Number(event.key));
       }
       if (event.key.toLowerCase() === 's') {
@@ -288,7 +499,7 @@ export function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [handleReview, handleSnooze]);
+  }, [handleReview, handleSnooze, hasFlippedCurrentCard]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden text-foreground">
@@ -344,6 +555,140 @@ export function App() {
           </Button>
         </div>
 
+        {/* Move Deck Dialog */}
+        <Dialog
+          open={moveDeckId !== null}
+          onOpenChange={(open) => !open && setMoveDeckId(null)}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Deck verschieben</DialogTitle>
+              <DialogDescription>
+                Wähle einen neuen Ordner für dieses Deck oder "Root" für die oberste
+                Ebene.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <select
+                className="w-full rounded-md border border-border bg-background px-3 py-2"
+                value={moveTargetId ?? ''}
+                onChange={(e) => setMoveTargetId(e.target.value || null)}
+              >
+                <option value="">Root (Oberste Ebene)</option>
+                {decks
+                  .filter((d) => d.id !== moveDeckId)
+                  .map((deck) => (
+                    <option key={deck.id} value={deck.id}>
+                      {deck.name}
+                    </option>
+                  ))}
+              </select>
+              <div className="flex gap-2">
+                <Button onClick={handleMoveDeck}>Verschieben</Button>
+                <Button variant="outline" onClick={() => setMoveDeckId(null)}>
+                  Abbrechen
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Deck Dialog */}
+        <Dialog
+          open={deleteDeckId !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDeleteDeckId(null);
+              setDeletePreview(null);
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Deck löschen</DialogTitle>
+              <DialogDescription>
+                Bist du sicher, dass du "{deletePreview?.deckName}" löschen möchtest?
+              </DialogDescription>
+            </DialogHeader>
+            {deletePreview && (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
+                  <p className="text-sm font-semibold text-yellow-900 dark:text-yellow-200">
+                    Auswirkungen:
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm text-yellow-800 dark:text-yellow-300">
+                    <li>• {deletePreview.totalCardCount} Karten werden gelöscht</li>
+                    {deletePreview.childDeckCount > 0 && (
+                      <li>• {deletePreview.childDeckCount} Unter-Decks betroffen</li>
+                    )}
+                  </ul>
+                </div>
+
+                {deletePreview.childDeckCount > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Was soll mit den Unter-Decks passieren?
+                    </label>
+                    <div className="space-y-2">
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="radio"
+                          value="cascade"
+                          checked={deleteMode === 'cascade'}
+                          onChange={(e) =>
+                            setDeleteMode(e.target.value as 'cascade' | 'reparent')
+                          }
+                          className="mt-0.5"
+                        />
+                        <span className="text-sm">
+                          <strong>Alles löschen</strong>
+                          <br />
+                          <span className="text-muted-foreground">
+                            Deck und alle Unter-Decks inkl. Karten löschen
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="radio"
+                          value="reparent"
+                          checked={deleteMode === 'reparent'}
+                          onChange={(e) =>
+                            setDeleteMode(e.target.value as 'cascade' | 'reparent')
+                          }
+                          className="mt-0.5"
+                        />
+                        <span className="text-sm">
+                          <strong>Unter-Decks behalten</strong>
+                          <br />
+                          <span className="text-muted-foreground">
+                            Nur dieses Deck löschen, Unter-Decks eine Ebene hochschieben
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button variant="destructive" onClick={handleDeleteDeck}>
+                    Deck löschen
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setDeleteDeckId(null);
+                      setDeletePreview(null);
+                    }}
+                  >
+                    Abbrechen
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
         <Separator />
 
         <ScrollArea className="flex-1">
@@ -358,6 +703,8 @@ export function App() {
                   level={0}
                   selectedId={selectedDeckId}
                   onSelect={setSelectedDeckId}
+                  onMove={setMoveDeckId}
+                  onDelete={setDeleteDeckId}
                 />
               ))
             )}
@@ -405,8 +752,10 @@ export function App() {
         <div className="flex-1 overflow-auto">
           <TabsContent value="review" className="h-full">
             <div className="grid h-full grid-cols-1 gap-6 p-6 lg:grid-cols-[2fr_1fr]">
-              <CardShell className="flex flex-col justify-between gap-6">
-                <div className="space-y-4">
+              {/* Regular Card Review */}
+              {dueCard && (
+                <CardShell className="flex flex-col justify-between gap-6">
+                  <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-muted-foreground">
                       Nächste Karte
@@ -439,19 +788,29 @@ export function App() {
                 </div>
                 <div className="space-y-4">
                   <Button
-                    variant="outline"
-                    onClick={() => setReviewFlipped((prev) => !prev)}
+                    variant={!hasFlippedCurrentCard ? 'default' : 'outline'}
+                    className={!hasFlippedCurrentCard ? 'ring-2 ring-primary animate-pulse' : ''}
+                    onClick={() => {
+                      setReviewFlipped((prev) => !prev);
+                      setHasFlippedCurrentCard(true);
+                    }}
                     disabled={!dueCard}
                   >
-                    Karte umdrehen (Space)
+                    {reviewFlipped ? 'Frage zeigen' : 'Antwort aufdecken (Space)'}
                   </Button>
+                  {!hasFlippedCurrentCard && dueCard && (
+                    <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-200">
+                      💡 Decke zuerst die Antwort auf, dann bewerte dein Wissen
+                    </div>
+                  )}
                   <div className="grid grid-cols-3 gap-2 md:grid-cols-6">
                     {[0, 1, 2, 3, 4, 5].map((score) => (
                       <Button
                         key={score}
                         variant="secondary"
                         onClick={() => handleReview(score)}
-                        disabled={!dueCard}
+                        disabled={!dueCard || !hasFlippedCurrentCard}
+                        className={!hasFlippedCurrentCard ? 'cursor-not-allowed opacity-50' : ''}
                       >
                         {score}
                       </Button>
@@ -470,6 +829,94 @@ export function App() {
                   </div>
                 </div>
               </CardShell>
+              )}
+
+              {/* Session Completed */}
+              {sessionMode === 'completed' && !dueCard && (
+                <CardShell className="flex flex-col items-center justify-center gap-6 p-12 text-center">
+                  <div className="text-6xl">🎉</div>
+                  <div>
+                    <h3 className="text-2xl font-semibold">Sehr gut gemacht!</h3>
+                    <p className="text-muted-foreground mt-2">
+                      Du hast alle fälligen Karten für dieses Deck durchgearbeitet.
+                    </p>
+                  </div>
+                  {nextReviewInfo?.nextDueAt && (
+                    <div className="rounded-lg border border-border bg-secondary/30 p-4 min-w-[250px]">
+                      <p className="text-sm text-muted-foreground">
+                        Nächste Review-Session
+                      </p>
+                      <p className="text-lg font-semibold mt-1">
+                        {nextReviewInfo.formattedTime}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {nextReviewInfo.nextDueCardCount} Karten werden fällig
+                      </p>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => {
+                        setSessionMode('regular');
+                        startSession();
+                        loadDueCard(selectedDeckId);
+                      }}
+                    >
+                      Nochmal üben
+                    </Button>
+                    <Button variant="outline" onClick={() => setActiveTab('browse')}>
+                      Karten durchsuchen
+                    </Button>
+                  </div>
+                </CardShell>
+              )}
+
+              {/* Poor Card Repetition Prompt */}
+              {sessionMode === 'poor-repetition' && !dueCard && (
+                <CardShell className="flex flex-col items-center justify-center gap-6 p-12 text-center">
+                  <div className="text-6xl">🔄</div>
+                  <div>
+                    <h3 className="text-xl font-semibold">
+                      Schwierige Karten wiederholen?
+                    </h3>
+                    <p className="text-muted-foreground mt-2">
+                      Du hast {poorCardIds.length} Karte
+                      {poorCardIds.length !== 1 ? 'n' : ''} als schwierig markiert
+                      (Bewertung &lt; 3).
+                      <br />
+                      Möchtest du sie nochmal üben, um das Wissen zu festigen?
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={async () => {
+                        const nextCard =
+                          await window.cardcrafter.getDueCardWithPriority(
+                            selectedDeckId,
+                            poorCardIds,
+                          );
+                        if (nextCard) {
+                          setDueCard(nextCard);
+                          setReviewFlipped(false);
+                          setHasFlippedCurrentCard(false);
+                        }
+                      }}
+                    >
+                      Ja, nochmal üben
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        await endSession();
+                        await loadNextReviewInfo();
+                      }}
+                    >
+                      Nein, fertig für heute
+                    </Button>
+                  </div>
+                </CardShell>
+              )}
+
               <CardShell className="space-y-4">
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground">
@@ -477,6 +924,22 @@ export function App() {
                   </h3>
                   <p className="text-3xl font-semibold">{stats.dueToday}</p>
                 </div>
+                {nextReviewInfo?.nextDueAt && stats.dueNow === 0 && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="text-sm font-semibold text-muted-foreground">
+                        Nächste Review-Session
+                      </h3>
+                      <p className="text-lg font-semibold mt-1">
+                        {nextReviewInfo.formattedTime}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {nextReviewInfo.nextDueCardCount} Karten
+                      </p>
+                    </div>
+                  </>
+                )}
                 <Separator />
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">

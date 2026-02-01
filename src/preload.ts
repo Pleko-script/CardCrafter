@@ -13,6 +13,18 @@ const api: CardCrafterAPI = {
   snoozeCard: (cardId, minutes) =>
     ipcRenderer.invoke(IPC_CHANNELS.snoozeCard, cardId, minutes),
   getStats: (deckId) => ipcRenderer.invoke(IPC_CHANNELS.getStats, deckId),
+  startReviewSession: (deckId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.startReviewSession, deckId),
+  endReviewSession: (sessionId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.endReviewSession, sessionId),
+  getNextReviewInfo: (deckId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.getNextReviewInfo, deckId),
+  getDueCardWithPriority: (deckId, poorCardIds) =>
+    ipcRenderer.invoke(IPC_CHANNELS.getDueCardWithPriority, deckId, poorCardIds),
+  moveDeck: (input) => ipcRenderer.invoke(IPC_CHANNELS.moveDeck, input),
+  deleteDeck: (input) => ipcRenderer.invoke(IPC_CHANNELS.deleteDeck, input),
+  getDeletePreview: (deckId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.getDeletePreview, deckId),
 };
 
 contextBridge.exposeInMainWorld('cardcrafter', api);

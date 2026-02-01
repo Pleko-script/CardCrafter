@@ -72,6 +72,38 @@ export type Stats = {
   deckProgress: number;
 };
 
+export type ReviewSession = {
+  id: string;
+  deckId: string | null;
+  startedAt: number;
+  endedAt: number | null;
+  cardsReviewed: number;
+  cardsRepeated: number;
+};
+
+export type NextReviewInfo = {
+  nextDueAt: number | null;
+  nextDueCardCount: number;
+  formattedTime: string;
+};
+
+export type MoveDeckInput = {
+  deckId: string;
+  newParentId: string | null;
+};
+
+export type DeleteDeckInput = {
+  deckId: string;
+  mode: 'cascade' | 'reparent';
+};
+
+export type DeckDeletePreview = {
+  deckName: string;
+  childDeckCount: number;
+  totalCardCount: number;
+  affectedDeckNames: string[];
+};
+
 export type CardCrafterAPI = {
   listDecks: () => Promise<Deck[]>;
   createDeck: (input: CreateDeckInput) => Promise<Deck>;
@@ -81,4 +113,14 @@ export type CardCrafterAPI = {
   reviewCard: (input: ReviewInput) => Promise<Scheduling>;
   snoozeCard: (cardId: string, minutes?: number) => Promise<Scheduling>;
   getStats: (deckId?: string | null) => Promise<Stats>;
+  startReviewSession: (deckId?: string | null) => Promise<ReviewSession>;
+  endReviewSession: (sessionId: string) => Promise<ReviewSession>;
+  getNextReviewInfo: (deckId?: string | null) => Promise<NextReviewInfo>;
+  getDueCardWithPriority: (
+    deckId?: string | null,
+    poorCardIds?: string[],
+  ) => Promise<CardWithScheduling | null>;
+  moveDeck: (input: MoveDeckInput) => Promise<Deck>;
+  deleteDeck: (input: DeleteDeckInput) => Promise<void>;
+  getDeletePreview: (deckId: string) => Promise<DeckDeletePreview>;
 };

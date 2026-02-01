@@ -7,4 +7,11 @@ export const IPC_CHANNELS = {
   reviewCard: 'review:rate',
   snoozeCard: 'review:snooze',
   getStats: 'stats:get',
+  startReviewSession: 'session:start',
+  endReviewSession: 'session:end',
+  getNextReviewInfo: 'review:next-info',
+  getDueCardWithPriority: 'review:next-with-poor',
+  moveDeck: 'decks:move',
+  deleteDeck: 'decks:delete',
+  getDeletePreview: 'decks:delete-preview',
 } as const;
