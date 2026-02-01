@@ -1,11 +1,138 @@
-import React from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useEditor, EditorContent, NodeViewWrapper, NodeViewProps, ReactNodeViewRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Bold, Italic, List, ListOrdered, ImageIcon } from 'lucide-react';
+import { Bold, Italic, List, ListOrdered, ImageIcon, Minus, Plus } from 'lucide-react';
 
 import { cn } from '../../lib/utils';
+
+// Custom resizable image component
+function ResizableImageComponent({ node, updateAttributes, selected }: NodeViewProps) {
+  const [isResizing, setIsResizing] = useState(false);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const startPos = useRef({ x: 0, y: 0, width: 0 });
+
+  const width = node.attrs.width || 'auto';
+
+  const handleMouseDown = useCallback((e: React.MouseEvent, corner: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizing(true);
+
+    const img = imageRef.current;
+    if (!img) return;
+
+    startPos.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width: img.offsetWidth,
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startPos.current.x;
+      let newWidth = startPos.current.width + (corner.includes('right') ? deltaX : -deltaX);
+      newWidth = Math.max(50, Math.min(newWidth, 800)); // Min 50px, max 800px
+      updateAttributes({ width: `${newWidth}px` });
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [updateAttributes]);
+
+  const adjustSize = useCallback((delta: number) => {
+    const img = imageRef.current;
+    if (!img) return;
+
+    const currentWidth = img.offsetWidth;
+    let newWidth = currentWidth + delta;
+    newWidth = Math.max(50, Math.min(newWidth, 800));
+    updateAttributes({ width: `${newWidth}px` });
+  }, [updateAttributes]);
+
+  return (
+    <NodeViewWrapper className="relative inline-block my-2">
+      <div className={cn(
+        'relative inline-block group',
+        selected && 'ring-2 ring-primary ring-offset-2 rounded',
+        isResizing && 'select-none'
+      )}>
+        <img
+          ref={imageRef}
+          src={node.attrs.src}
+          alt={node.attrs.alt || ''}
+          style={{ width: width !== 'auto' ? width : undefined }}
+          className="max-w-full h-auto rounded block"
+          draggable={false}
+        />
+
+        {/* Resize handles - visible when selected */}
+        {selected && (
+          <>
+            {/* Corner handles */}
+            <div
+              className="absolute -right-1.5 -bottom-1.5 w-3 h-3 bg-primary rounded-sm cursor-se-resize border border-background"
+              onMouseDown={(e) => handleMouseDown(e, 'bottom-right')}
+            />
+            <div
+              className="absolute -left-1.5 -bottom-1.5 w-3 h-3 bg-primary rounded-sm cursor-sw-resize border border-background"
+              onMouseDown={(e) => handleMouseDown(e, 'bottom-left')}
+            />
+
+            {/* Size controls */}
+            <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-popover border border-border rounded-md shadow-md px-1 py-0.5">
+              <button
+                type="button"
+                onClick={() => adjustSize(-50)}
+                className="p-1 hover:bg-muted rounded"
+                title="Kleiner"
+              >
+                <Minus size={14} />
+              </button>
+              <span className="text-xs px-1 min-w-[50px] text-center">
+                {imageRef.current?.offsetWidth || '---'}px
+              </span>
+              <button
+                type="button"
+                onClick={() => adjustSize(50)}
+                className="p-1 hover:bg-muted rounded"
+                title="Größer"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </NodeViewWrapper>
+  );
+}
+
+// Custom Image extension with resizing support
+const ResizableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: 'auto',
+        renderHTML: (attributes) => {
+          if (attributes.width === 'auto') return {};
+          return { style: `width: ${attributes.width}` };
+        },
+      },
+    };
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(ResizableImageComponent);
+  },
+});
 
 type RichEditorProps = {
   value: string;
@@ -55,7 +182,7 @@ export function RichEditor({
   const editor = useEditor({
     extensions: [
       StarterKit,
-      Image.configure({
+      ResizableImage.configure({
         inline: false,
         allowBase64: true,
       }),
@@ -189,12 +316,6 @@ export function RichEditor({
           pointer-events: none;
           height: 0;
         }
-        .ProseMirror img {
-          max-width: 100%;
-          height: auto;
-          border-radius: 0.375rem;
-          margin: 0.5rem 0;
-        }
         .ProseMirror:focus {
           outline: none;
         }
@@ -207,6 +328,9 @@ export function RichEditor({
         }
         .ProseMirror ol {
           list-style-type: decimal;
+        }
+        .ProseMirror .ProseMirror-selectednode {
+          outline: none;
         }
       `}</style>
     </div>
