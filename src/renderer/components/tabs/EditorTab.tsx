@@ -1,11 +1,11 @@
-﻿import React from 'react';
+import React from 'react';
 import { Sparkles } from 'lucide-react';
 
 import { Button } from '../ui/button';
 import { Card as CardShell } from '../ui/card';
 import { Input } from '../ui/input';
+import { RichEditor } from '../ui/rich-editor';
 import { TabsContent } from '../ui/tabs';
-import { Textarea } from '../ui/textarea';
 
 type EditorTabProps = {
   front: string;
@@ -32,16 +32,28 @@ export function EditorTab({
         <CardShell className="space-y-4">
           <h3 className="text-lg font-semibold">Neue Karte</h3>
           <div className="space-y-3">
-            <Input
-              placeholder="Frage / Vorderseite"
-              value={front}
-              onChange={(event) => onFrontChange(event.target.value)}
-            />
-            <Textarea
-              placeholder="Antwort / Rückseite"
-              value={back}
-              onChange={(event) => onBackChange(event.target.value)}
-            />
+            <div>
+              <label className="text-sm font-medium text-muted-foreground mb-1.5 block">
+                Frage / Vorderseite
+              </label>
+              <RichEditor
+                value={front}
+                onChange={onFrontChange}
+                placeholder="Frage eingeben... (Bilder per Drag & Drop oder Strg+V)"
+                minHeight="80px"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground mb-1.5 block">
+                Antwort / Rückseite
+              </label>
+              <RichEditor
+                value={back}
+                onChange={onBackChange}
+                placeholder="Antwort eingeben... (Bilder per Drag & Drop oder Strg+V)"
+                minHeight="120px"
+              />
+            </div>
             <Input
               placeholder="Tags (kommagetrennt)"
               value={tags}
@@ -64,6 +76,11 @@ export function EditorTab({
             <li>Listen aufteilen, Prozesse zerlegen.</li>
             <li>Erst verstehen, dann speichern.</li>
           </ul>
+          <div className="mt-4 pt-3 border-t border-border">
+            <p className="text-xs text-muted-foreground">
+              💡 Tipp: Du kannst Bilder per Drag & Drop oder Strg+V einfügen!
+            </p>
+          </div>
         </CardShell>
       </div>
     </TabsContent>

@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 
 import { Button } from '../ui/button';
 import {
@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { Input } from '../ui/input';
-import { Textarea } from '../ui/textarea';
+import { RichEditor } from '../ui/rich-editor';
 
 type EditCardDialogProps = {
   open: boolean;
@@ -36,24 +36,36 @@ export function EditCardDialog({
 }: EditCardDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Karte bearbeiten</DialogTitle>
           <DialogDescription>
-            Aktualisiere Frage, Antwort und Tags.
+            Aktualisiere Frage, Antwort und Tags. Bilder per Drag & Drop oder Strg+V einfügen.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <Input
-            placeholder="Frage / Vorderseite"
-            value={front}
-            onChange={(event) => onFrontChange(event.target.value)}
-          />
-          <Textarea
-            placeholder="Antwort / Rückseite"
-            value={back}
-            onChange={(event) => onBackChange(event.target.value)}
-          />
+          <div>
+            <label className="text-sm font-medium text-muted-foreground mb-1.5 block">
+              Frage / Vorderseite
+            </label>
+            <RichEditor
+              value={front}
+              onChange={onFrontChange}
+              placeholder="Frage eingeben..."
+              minHeight="80px"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-muted-foreground mb-1.5 block">
+              Antwort / Rückseite
+            </label>
+            <RichEditor
+              value={back}
+              onChange={onBackChange}
+              placeholder="Antwort eingeben..."
+              minHeight="100px"
+            />
+          </div>
           <Input
             placeholder="Tags (kommagetrennt)"
             value={tags}

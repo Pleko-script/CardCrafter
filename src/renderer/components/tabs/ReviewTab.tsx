@@ -1,4 +1,5 @@
-﻿import React from 'react';
+import React from 'react';
+import DOMPurify from 'dompurify';
 
 import type { CardWithScheduling, NextReviewInfo, Stats } from '../../../shared/types';
 import { Badge } from '../ui/badge';
@@ -7,6 +8,23 @@ import { Card as CardShell } from '../ui/card';
 import { Separator } from '../ui/separator';
 import { TabsContent } from '../ui/tabs';
 import { cn } from '../../lib/utils';
+
+function CardContent({ html, className }: { html: string; className?: string }) {
+  const sanitizedHtml = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'img', 'span'],
+    ALLOWED_ATTR: ['src', 'alt', 'class', 'style'],
+  });
+
+  return (
+    <div
+      className={cn('prose prose-sm max-w-none', className)}
+      dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+      style={{
+        // Styles for images in the content
+      }}
+    />
+  );
+}
 
 const ratingOptions = [
   { value: 0, label: '0', hint: 'Gar nicht' },
@@ -79,9 +97,7 @@ export function ReviewTab({
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Frage
                   </p>
-                  <div className="mt-2 whitespace-pre-wrap text-base text-foreground">
-                    {dueCard.front}
-                  </div>
+                  <CardContent html={dueCard.front} className="mt-2 text-base text-foreground" />
                 </div>
                 <div
                   className={cn(
@@ -92,11 +108,13 @@ export function ReviewTab({
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Antwort
                   </p>
-                  <div className="mt-2 whitespace-pre-wrap text-base">
-                    {reviewFlipped
-                      ? dueCard.back
-                      : 'Antwort ist verborgen. Drücke Space.'}
-                  </div>
+                  {reviewFlipped ? (
+                    <CardContent html={dueCard.back} className="mt-2 text-base" />
+                  ) : (
+                    <div className="mt-2 text-base">
+                      Antwort ist verborgen. Drücke Space.
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">

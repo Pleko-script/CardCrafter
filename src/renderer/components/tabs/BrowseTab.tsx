@@ -1,4 +1,5 @@
-﻿import React from 'react';
+import React from 'react';
+import DOMPurify from 'dompurify';
 
 import type { Card } from '../../../shared/types';
 import { Badge } from '../ui/badge';
@@ -6,6 +7,32 @@ import { Button } from '../ui/button';
 import { Card as CardShell } from '../ui/card';
 import { Input } from '../ui/input';
 import { TabsContent } from '../ui/tabs';
+
+function stripHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return doc.body.textContent || '';
+}
+
+function CardPreview({ html, className }: { html: string; className?: string }) {
+  const sanitizedHtml = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'img'],
+    ALLOWED_ATTR: ['src', 'alt', 'class'],
+  });
+
+  // For preview, show text only (no images) and truncate
+  const textOnly = stripHtml(html);
+  const truncated = textOnly.length > 100 ? textOnly.slice(0, 100) + '...' : textOnly;
+
+  // Check if there are images in the content
+  const hasImages = html.includes('<img');
+
+  return (
+    <span className={className}>
+      {truncated}
+      {hasImages && <span className="text-muted-foreground ml-1">[Bild]</span>}
+    </span>
+  );
+}
 
 type BrowseTabProps = {
   cards: Card[];
@@ -43,11 +70,15 @@ export function BrowseTab({ cards, loading, onEditCard }: BrowseTabProps) {
                 className="rounded-lg border border-border bg-background/70 p-4"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="font-medium">{card.front}</p>
-                    <p className="text-sm text-muted-foreground">{card.back}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium">
+                      <CardPreview html={card.front} />
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      <CardPreview html={card.back} />
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <Badge variant="secondary">
                       {new Date(card.createdAt).toLocaleDateString()}
                     </Badge>
