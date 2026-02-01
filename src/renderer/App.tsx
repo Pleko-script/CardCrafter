@@ -269,7 +269,10 @@ export function App() {
   const [currentSession, setCurrentSession] = React.useState<ReviewSession | null>(null);
   const [poorCardIds, setPoorCardIds] = React.useState<string[]>([]);
   const [nextReviewInfo, setNextReviewInfo] = React.useState<NextReviewInfo | null>(null);
-  const [sessionMode, setSessionMode] = React.useState<'regular' | 'poor-repetition' | 'completed'>('regular');
+  const [sessionMode, setSessionMode] = React.useState<
+    'regular' | 'poor-repetition' | 'practice' | 'completed'
+  >('regular');
+  const [practicePoolIds, setPracticePoolIds] = React.useState<string[]>([]);
   const [draggingDeckId, setDraggingDeckId] = React.useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = React.useState<string | null>(null);
   const [dropTargetType, setDropTargetType] = React.useState<'root' | 'deck' | null>(null);
@@ -331,14 +334,18 @@ export function App() {
     setStats(data);
   }, []);
 
-  const startSession = React.useCallback(async () => {
-    const session = await window.cardcrafter.startReviewSession(selectedDeckId);
-    setCurrentSession(session);
-    setPoorCardIds([]);
-    setSessionMode('regular');
-    setReviewFlipped(false);
-    setHasFlippedCurrentCard(false);
-  }, [selectedDeckId]);
+  const startSession = React.useCallback(
+    async (mode: 'regular' | 'practice' = 'regular') => {
+      const session = await window.cardcrafter.startReviewSession(selectedDeckId);
+      setCurrentSession(session);
+      setPoorCardIds([]);
+      setPracticePoolIds([]);
+      setSessionMode(mode);
+      setReviewFlipped(false);
+      setHasFlippedCurrentCard(false);
+    },
+    [selectedDeckId],
+  );
 
   const endSession = React.useCallback(async () => {
     if (!currentSession) return;
@@ -354,6 +361,33 @@ export function App() {
     const info = await window.cardcrafter.getNextReviewInfo(selectedDeckId);
     setNextReviewInfo(info);
   }, [selectedDeckId]);
+
+  const startPracticeSession = React.useCallback(async () => {
+    if (!selectedDeckId) return;
+    const pool = cards.map((card) => card.id);
+    if (pool.length === 0) {
+      setDueCard(null);
+      setSessionMode('regular');
+      return;
+    }
+    if (!currentSession) {
+      await startSession('practice');
+    } else {
+      setSessionMode('practice');
+      setReviewFlipped(false);
+      setHasFlippedCurrentCard(false);
+    }
+    setPracticePoolIds(pool);
+    const nextCard = await window.cardcrafter.getDueCardWithPriority(
+      selectedDeckId,
+      pool,
+    );
+    if (nextCard) {
+      setDueCard(nextCard);
+      setReviewFlipped(false);
+      setHasFlippedCurrentCard(false);
+    }
+  }, [cards, currentSession, selectedDeckId, startSession]);
 
   const performMoveDeck = React.useCallback(
     async (deckId: string, newParentId: string | null) => {
@@ -529,6 +563,7 @@ export function App() {
 
   React.useEffect(() => {
     if (!selectedDeckId) return;
+    setPracticePoolIds([]);
     loadCards(selectedDeckId);
     loadDueCard(selectedDeckId);
     loadStats(selectedDeckId);
@@ -609,6 +644,34 @@ export function App() {
       });
 
       if (selectedDeckId) {
+        if (sessionMode === 'practice') {
+          const nextPool = isPoor
+            ? practicePoolIds
+            : practicePoolIds.filter((id) => id !== dueCard.id);
+          setPracticePoolIds(nextPool);
+
+          if (nextPool.length === 0) {
+            await endSession();
+            await loadNextReviewInfo();
+          } else {
+            const nextCard = await window.cardcrafter.getDueCardWithPriority(
+              selectedDeckId,
+              nextPool,
+            );
+            if (nextCard) {
+              setDueCard(nextCard);
+              setReviewFlipped(false);
+              setHasFlippedCurrentCard(false);
+            } else {
+              await endSession();
+              await loadNextReviewInfo();
+            }
+          }
+
+          await loadStats(selectedDeckId);
+          return;
+        }
+
         const nextDueCard = await window.cardcrafter.getDueCard(selectedDeckId);
 
         if (nextDueCard) {
@@ -648,6 +711,8 @@ export function App() {
       hasFlippedCurrentCard,
       selectedDeckId,
       poorCardIds,
+      practicePoolIds,
+      sessionMode,
       endSession,
       loadNextReviewInfo,
       loadStats,
@@ -667,6 +732,19 @@ export function App() {
     await endSession();
     await loadNextReviewInfo();
   }, [endSession, loadNextReviewInfo]);
+
+  const startNextSession = React.useCallback(async () => {
+    if (!selectedDeckId) return;
+    const nextDue = await window.cardcrafter.getDueCard(selectedDeckId);
+    if (nextDue) {
+      await startSession('regular');
+      setDueCard(nextDue);
+      setReviewFlipped(false);
+      setHasFlippedCurrentCard(false);
+      return;
+    }
+    await startPracticeSession();
+  }, [selectedDeckId, startPracticeSession, startSession]);
 
   const handleMoveDeck = async () => {
     if (!moveDeckId) return;
@@ -1065,6 +1143,9 @@ export function App() {
                         {sessionMode === 'poor-repetition' && (
                           <Badge variant="outline">Schwierige Karten</Badge>
                         )}
+                        {sessionMode === 'practice' && (
+                          <Badge variant="outline">Freie Session</Badge>
+                        )}
                       </div>
                       <Badge variant="secondary">Due jetzt</Badge>
                     </div>
@@ -1171,6 +1252,37 @@ export function App() {
               </CardShell>
               )}
 
+              {!dueCard && sessionMode === 'regular' && (
+                <CardShell className="flex flex-col items-center justify-center gap-6 p-10 text-center">
+                  <div className="text-4xl">📭</div>
+                  <div>
+                    <h3 className="text-xl font-semibold">
+                      Keine faelligen Karten
+                    </h3>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Du kannst trotzdem eine freie Lern-Session starten, um
+                      Karten zu wiederholen.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button
+                      onClick={startPracticeSession}
+                      disabled={!selectedDeckId || cards.length === 0}
+                    >
+                      Trotzdem lernen
+                    </Button>
+                    <Button variant="outline" onClick={() => setActiveTab('browse')}>
+                      Karten durchsuchen
+                    </Button>
+                  </div>
+                  {cards.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      In diesem Deck sind noch keine Karten.
+                    </p>
+                  )}
+                </CardShell>
+              )}
+
               {/* Session Completed */}
               {sessionMode === 'completed' && !dueCard && (
                 <CardShell className="flex flex-col items-center justify-center gap-6 p-12 text-center">
@@ -1196,10 +1308,7 @@ export function App() {
                   )}
                   <div className="flex gap-2">
                     <Button
-                      onClick={async () => {
-                        await startSession();
-                        await loadDueCard(selectedDeckId);
-                      }}
+                      onClick={startNextSession}
                     >
                       Neue Session starten
                     </Button>
