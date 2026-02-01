@@ -8,6 +8,7 @@ const api: CardCrafterAPI = {
   createDeck: (input) => ipcRenderer.invoke(IPC_CHANNELS.createDeck, input),
   listCards: (deckId) => ipcRenderer.invoke(IPC_CHANNELS.listCards, deckId),
   createCard: (input) => ipcRenderer.invoke(IPC_CHANNELS.createCard, input),
+  updateCard: (input) => ipcRenderer.invoke(IPC_CHANNELS.updateCard, input),
   getDueCard: (deckId) => ipcRenderer.invoke(IPC_CHANNELS.getDueCard, deckId),
   reviewCard: (input) => ipcRenderer.invoke(IPC_CHANNELS.reviewCard, input),
   snoozeCard: (cardId, minutes) =>

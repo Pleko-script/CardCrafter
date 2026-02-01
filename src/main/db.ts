@@ -14,6 +14,7 @@ import type {
   ReviewSession,
   Scheduling,
   Stats,
+  UpdateCardInput,
 } from '../shared/types';
 import { computeNextSchedule, snoozeSchedule } from './scheduler';
 
@@ -280,6 +281,47 @@ export class CardCrafterDB {
     return card;
   }
 
+  updateCard(input: UpdateCardInput): Card {
+    const row = this.db
+      .prepare(
+        'SELECT id, deckId, type, front, back, clozeText, tagsJson, createdAt, updatedAt FROM cards WHERE id = ?',
+      )
+      .get(input.id) as DbCardRow | undefined;
+
+    if (!row) {
+      throw new Error('Card not found');
+    }
+
+    const front = input.front.trim();
+    const back = input.back.trim();
+    if (!front || !back) {
+      throw new Error('Card front and back are required');
+    }
+
+    const now = Date.now();
+    const tags = input.tags ?? safeJsonArray(row.tagsJson);
+
+    this.db
+      .prepare(
+        `UPDATE cards
+         SET front = ?, back = ?, tagsJson = ?, updatedAt = ?
+         WHERE id = ?`,
+      )
+      .run(front, back, JSON.stringify(tags), now, input.id);
+
+    return {
+      id: row.id,
+      deckId: row.deckId,
+      type: row.type,
+      front,
+      back,
+      clozeText: row.clozeText ?? null,
+      tags,
+      createdAt: row.createdAt,
+      updatedAt: now,
+    };
+  }
+
   getDueCard(deckId?: string | null): CardWithScheduling | null {
     const now = Date.now();
     const row = this.db
@@ -402,7 +444,7 @@ export class CardCrafterDB {
     const retentionRow = this.db
       .prepare(
         `SELECT
-            SUM(CASE WHEN q >= 3 THEN 1 ELSE 0 END) as good,
+            SUM(CASE WHEN q >= 2 THEN 1 ELSE 0 END) as good,
             COUNT(*) as total
          FROM (
            SELECT r.q

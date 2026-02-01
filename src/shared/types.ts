@@ -55,6 +55,13 @@ export type CreateCardInput = {
   tags?: string[];
 };
 
+export type UpdateCardInput = {
+  id: string;
+  front: string;
+  back: string;
+  tags?: string[];
+};
+
 export type ReviewInput = {
   cardId: string;
   q: number;
@@ -109,6 +116,7 @@ export type CardCrafterAPI = {
   createDeck: (input: CreateDeckInput) => Promise<Deck>;
   listCards: (deckId: string) => Promise<Card[]>;
   createCard: (input: CreateCardInput) => Promise<Card>;
+  updateCard: (input: UpdateCardInput) => Promise<Card>;
   getDueCard: (deckId?: string | null) => Promise<CardWithScheduling | null>;
   reviewCard: (input: ReviewInput) => Promise<Scheduling>;
   snoozeCard: (cardId: string, minutes?: number) => Promise<Scheduling>;

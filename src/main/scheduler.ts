@@ -9,30 +9,40 @@ type ScheduleInput = {
 };
 
 export function computeNextSchedule({ current, q, now }: ScheduleInput): Scheduling {
-  const qClamped = Math.max(0, Math.min(5, q));
+  const qClamped = Math.max(0, Math.min(3, q));
   const prevInterval = current.intervalDays;
+
+  // Map 0-3 to SM-2-like quality (0, 2, 4, 5) for a smoother ease update.
+  const sm2Quality = [0, 2, 4, 5][qClamped];
   let ef =
     current.ef +
-    (0.1 - (5 - qClamped) * (0.08 + (5 - qClamped) * 0.02));
+    (0.1 - (5 - sm2Quality) * (0.08 + (5 - sm2Quality) * 0.02));
   if (ef < 1.3) {
     ef = 1.3;
   }
 
   let n = current.n;
   let intervalDays = prevInterval;
+  let dueAt = current.dueAt;
 
-  if (qClamped < 3) {
-    n = 1;
-    intervalDays = 1;
+  if (qClamped <= 1) {
+    // Fail/partial: reset to a short learning step.
+    n = 0;
+    intervalDays = 0;
+    const minutes = qClamped === 0 ? 10 : 30;
+    dueAt = now + minutes * 60 * 1000;
   } else {
+    // Success: grow intervals, with a smaller jump for "hard".
     n = n + 1;
     if (n === 1) {
       intervalDays = 1;
     } else if (n === 2) {
-      intervalDays = 6;
+      intervalDays = 3;
     } else {
-      intervalDays = Math.ceil(prevInterval * ef);
+      const multiplier = qClamped === 2 ? 0.85 : 1;
+      intervalDays = Math.max(1, Math.ceil(prevInterval * ef * multiplier));
     }
+    dueAt = now + intervalDays * DAY_MS;
   }
 
   return {
@@ -40,7 +50,7 @@ export function computeNextSchedule({ current, q, now }: ScheduleInput): Schedul
     n,
     intervalDays,
     ef,
-    dueAt: now + intervalDays * DAY_MS,
+    dueAt,
     lastReviewedAt: now,
   };
 }

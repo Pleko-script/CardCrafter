@@ -41,6 +41,15 @@ import { cn } from './lib/utils';
 
 type DeckNode = Deck & { children: DeckNode[] };
 
+const ratingOptions = [
+  { value: 0, label: '0', hint: 'Gar nicht' },
+  { value: 1, label: '1', hint: 'Teilweise' },
+  { value: 2, label: '2', hint: 'Schwer' },
+  { value: 3, label: '3', hint: 'Leicht' },
+];
+
+const POOR_SCORE_MAX = 1;
+
 const emptyStats: Stats = {
   dueNow: 0,
   dueToday: 0,
@@ -137,6 +146,14 @@ function DeckTreeItem({
   onSelect,
   onMove,
   onDelete,
+  draggingId,
+  dropTargetId,
+  dropTargetType,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
 }: {
   node: DeckNode;
   level: number;
@@ -144,6 +161,14 @@ function DeckTreeItem({
   onSelect: (id: string) => void;
   onMove: (deckId: string) => void;
   onDelete: (deckId: string) => void;
+  draggingId: string | null;
+  dropTargetId: string | null;
+  dropTargetType: 'root' | 'deck' | null;
+  onDragStart: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
+  onDragEnd: () => void;
+  onDragOver: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
+  onDragLeave: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
+  onDrop: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
 }) {
   const [open, setOpen] = React.useState(true);
   const hasChildren = node.children.length > 0;
@@ -156,10 +181,21 @@ function DeckTreeItem({
           className={cn(
             'flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted',
             selectedId === node.id && 'bg-secondary text-foreground',
+            dropTargetType === 'deck' &&
+              dropTargetId === node.id &&
+              'ring-2 ring-primary/70',
+            draggingId === node.id && 'opacity-60',
           )}
           style={{ paddingLeft: 12 + level * 14 }}
           onClick={() => onSelect(node.id)}
           aria-current={selectedId === node.id ? 'page' : undefined}
+          draggable
+          onDragStart={(event) => onDragStart(node.id, event)}
+          onDragEnd={onDragEnd}
+          onDragOver={(event) => onDragOver(node.id, event)}
+          onDragLeave={(event) => onDragLeave(node.id, event)}
+          onDrop={(event) => onDrop(node.id, event)}
+          aria-grabbed={draggingId === node.id}
         >
           {hasChildren && (
             <span
@@ -201,6 +237,14 @@ function DeckTreeItem({
               onSelect={onSelect}
               onMove={onMove}
               onDelete={onDelete}
+              draggingId={draggingId}
+              dropTargetId={dropTargetId}
+              dropTargetType={dropTargetType}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
             />
           ))}
         </div>
@@ -226,6 +270,9 @@ export function App() {
   const [poorCardIds, setPoorCardIds] = React.useState<string[]>([]);
   const [nextReviewInfo, setNextReviewInfo] = React.useState<NextReviewInfo | null>(null);
   const [sessionMode, setSessionMode] = React.useState<'regular' | 'poor-repetition' | 'completed'>('regular');
+  const [draggingDeckId, setDraggingDeckId] = React.useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = React.useState<string | null>(null);
+  const [dropTargetType, setDropTargetType] = React.useState<'root' | 'deck' | null>(null);
   const [moveDeckId, setMoveDeckId] = React.useState<string | null>(null);
   const [moveTargetId, setMoveTargetId] = React.useState<string | null>(null);
   const [deleteDeckId, setDeleteDeckId] = React.useState<string | null>(null);
@@ -236,6 +283,10 @@ export function App() {
   const [cardFront, setCardFront] = React.useState('');
   const [cardBack, setCardBack] = React.useState('');
   const [cardTags, setCardTags] = React.useState('');
+  const [editingCard, setEditingCard] = React.useState<Card | null>(null);
+  const [editFront, setEditFront] = React.useState('');
+  const [editBack, setEditBack] = React.useState('');
+  const [editTags, setEditTags] = React.useState('');
   const [loading, setLoading] = React.useState({
     decks: false,
     cards: false,
@@ -285,6 +336,8 @@ export function App() {
     setCurrentSession(session);
     setPoorCardIds([]);
     setSessionMode('regular');
+    setReviewFlipped(false);
+    setHasFlippedCurrentCard(false);
   }, [selectedDeckId]);
 
   const endSession = React.useCallback(async () => {
@@ -292,12 +345,183 @@ export function App() {
     await window.cardcrafter.endReviewSession(currentSession.id);
     setCurrentSession(null);
     setSessionMode('completed');
+    setDueCard(null);
+    setReviewFlipped(false);
+    setHasFlippedCurrentCard(false);
   }, [currentSession]);
 
   const loadNextReviewInfo = React.useCallback(async () => {
     const info = await window.cardcrafter.getNextReviewInfo(selectedDeckId);
     setNextReviewInfo(info);
   }, [selectedDeckId]);
+
+  const performMoveDeck = React.useCallback(
+    async (deckId: string, newParentId: string | null) => {
+      try {
+        await window.cardcrafter.moveDeck({ deckId, newParentId });
+        await loadDecks();
+        setSelectedDeckId(deckId);
+        return true;
+      } catch (error) {
+        alert(`Fehler beim Verschieben: ${(error as Error).message}`);
+        return false;
+      }
+    },
+    [loadDecks],
+  );
+
+  const resetDragState = React.useCallback(() => {
+    setDraggingDeckId(null);
+    setDropTargetId(null);
+    setDropTargetType(null);
+  }, []);
+
+  const handleDeckDragStart = React.useCallback(
+    (deckId: string, event: React.DragEvent<HTMLButtonElement>) => {
+      event.dataTransfer.setData('text/plain', deckId);
+      event.dataTransfer.effectAllowed = 'move';
+      setDraggingDeckId(deckId);
+      setDropTargetId(null);
+      setDropTargetType(null);
+    },
+    [],
+  );
+
+  const handleDeckDragEnd = React.useCallback(() => {
+    resetDragState();
+  }, [resetDragState]);
+
+  const handleDeckDragOver = React.useCallback(
+    (deckId: string, event: React.DragEvent<HTMLButtonElement>) => {
+      if (!draggingDeckId || draggingDeckId === deckId) return;
+      event.preventDefault();
+      setDropTargetId(deckId);
+      setDropTargetType('deck');
+    },
+    [draggingDeckId],
+  );
+
+  const handleDeckDragLeave = React.useCallback(
+    (deckId: string, event: React.DragEvent<HTMLButtonElement>) => {
+      if (dropTargetId !== deckId) return;
+      const related = event.relatedTarget as Node | null;
+      if (related && event.currentTarget.contains(related)) return;
+      setDropTargetId(null);
+      setDropTargetType(null);
+    },
+    [dropTargetId],
+  );
+
+  const handleDeckDrop = React.useCallback(
+    async (targetId: string, event: React.DragEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      const draggedId =
+        draggingDeckId ?? event.dataTransfer.getData('text/plain');
+      if (!draggedId || draggedId === targetId) {
+        resetDragState();
+        return;
+      }
+      await performMoveDeck(draggedId, targetId);
+      resetDragState();
+    },
+    [draggingDeckId, performMoveDeck, resetDragState],
+  );
+
+  const handleRootDragOver = React.useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      if (!draggingDeckId) return;
+      event.preventDefault();
+      setDropTargetId(null);
+      setDropTargetType('root');
+    },
+    [draggingDeckId],
+  );
+
+  const handleRootDragLeave = React.useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      if (dropTargetType !== 'root') return;
+      const related = event.relatedTarget as Node | null;
+      if (related && event.currentTarget.contains(related)) return;
+      setDropTargetType(null);
+    },
+    [dropTargetType],
+  );
+
+  const handleRootDrop = React.useCallback(
+    async (event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const draggedId =
+        draggingDeckId ?? event.dataTransfer.getData('text/plain');
+      if (!draggedId) {
+        resetDragState();
+        return;
+      }
+      await performMoveDeck(draggedId, null);
+      resetDragState();
+    },
+    [draggingDeckId, performMoveDeck, resetDragState],
+  );
+
+  const openEditCard = (card: Card) => {
+    setEditingCard(card);
+    setEditFront(card.front);
+    setEditBack(card.back);
+    setEditTags(card.tags.join(', '));
+  };
+
+  const closeEditDialog = React.useCallback(() => {
+    setEditingCard(null);
+    setEditFront('');
+    setEditBack('');
+    setEditTags('');
+  }, []);
+
+  const handleUpdateCard = React.useCallback(async () => {
+    if (!editingCard) return;
+    const front = editFront.trim();
+    const back = editBack.trim();
+    if (!front || !back) return;
+
+    const tags = editTags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+
+    try {
+      await window.cardcrafter.updateCard({
+        id: editingCard.id,
+        front,
+        back,
+        tags,
+      });
+
+      if (selectedDeckId) {
+        await loadCards(selectedDeckId);
+      }
+
+      if (dueCard && dueCard.id === editingCard.id) {
+        setDueCard({
+          ...dueCard,
+          front,
+          back,
+          tags,
+        });
+      }
+
+      closeEditDialog();
+    } catch (error) {
+      alert(`Fehler beim Speichern: ${(error as Error).message}`);
+    }
+  }, [
+    editingCard,
+    editFront,
+    editBack,
+    editTags,
+    selectedDeckId,
+    loadCards,
+    dueCard,
+    closeEditDialog,
+  ]);
 
   React.useEffect(() => {
     loadDecks();
@@ -312,10 +536,15 @@ export function App() {
 
   // Session starten beim Wechsel zum Review-Tab
   React.useEffect(() => {
-    if (activeTab === 'review' && !currentSession && selectedDeckId) {
+    if (
+      activeTab === 'review' &&
+      !currentSession &&
+      selectedDeckId &&
+      sessionMode !== 'completed'
+    ) {
       startSession();
     }
-  }, [activeTab, currentSession, selectedDeckId, startSession]);
+  }, [activeTab, currentSession, selectedDeckId, sessionMode, startSession]);
 
   // Next Review Info laden
   React.useEffect(() => {
@@ -360,13 +589,17 @@ export function App() {
   };
 
   const handleReview = React.useCallback(
-    async (q: number) => {
+    async (score: number) => {
       if (!dueCard || !hasFlippedCurrentCard) return;
 
-      // Track poor cards (q < 3)
-      if (q < 3 && !poorCardIds.includes(dueCard.id)) {
-        setPoorCardIds((prev) => [...prev, dueCard.id]);
-      }
+      const q = Math.max(0, Math.min(3, score));
+      const isPoor = q <= POOR_SCORE_MAX;
+      const nextPoorCardIds = isPoor
+        ? poorCardIds.includes(dueCard.id)
+          ? poorCardIds
+          : [...poorCardIds, dueCard.id]
+        : poorCardIds.filter((id) => id !== dueCard.id);
+      setPoorCardIds(nextPoorCardIds);
 
       // Review durchführen
       await window.cardcrafter.reviewCard({
@@ -376,25 +609,35 @@ export function App() {
       });
 
       if (selectedDeckId) {
-        // Nächste Karte laden (ggf. aus Poor Queue)
-        const poorQueue = sessionMode === 'poor-repetition' ? poorCardIds : [];
-        const nextCard = await window.cardcrafter.getDueCardWithPriority(
-          selectedDeckId,
-          poorQueue,
-        );
+        const nextDueCard = await window.cardcrafter.getDueCard(selectedDeckId);
 
-        if (!nextCard && sessionMode === 'regular' && poorCardIds.length > 0) {
-          // Keine Due Cards mehr, aber Poor Cards vorhanden
-          setSessionMode('poor-repetition');
-          setDueCard(null);
-        } else if (!nextCard) {
-          // Session komplett beendet
-          await endSession();
-          await loadNextReviewInfo();
-        } else {
-          setDueCard(nextCard);
+        if (nextDueCard) {
+          setSessionMode('regular');
+          setDueCard(nextDueCard);
           setReviewFlipped(false);
           setHasFlippedCurrentCard(false);
+        } else if (nextPoorCardIds.length > 0) {
+          setSessionMode('poor-repetition');
+          const candidates =
+            nextPoorCardIds.filter((id) => id !== dueCard.id).length > 0
+              ? nextPoorCardIds.filter((id) => id !== dueCard.id)
+              : nextPoorCardIds;
+          const nextPoorCard = await window.cardcrafter.getDueCardWithPriority(
+            selectedDeckId,
+            candidates,
+          );
+
+          if (nextPoorCard) {
+            setDueCard(nextPoorCard);
+            setReviewFlipped(false);
+            setHasFlippedCurrentCard(false);
+          } else {
+            await endSession();
+            await loadNextReviewInfo();
+          }
+        } else {
+          await endSession();
+          await loadNextReviewInfo();
         }
 
         await loadStats(selectedDeckId);
@@ -404,7 +647,6 @@ export function App() {
       dueCard,
       hasFlippedCurrentCard,
       selectedDeckId,
-      sessionMode,
       poorCardIds,
       endSession,
       loadNextReviewInfo,
@@ -421,19 +663,18 @@ export function App() {
     }
   }, [dueCard, selectedDeckId, loadDueCard, loadStats]);
 
+  const handleEndSession = React.useCallback(async () => {
+    await endSession();
+    await loadNextReviewInfo();
+  }, [endSession, loadNextReviewInfo]);
+
   const handleMoveDeck = async () => {
     if (!moveDeckId) return;
 
-    try {
-      await window.cardcrafter.moveDeck({
-        deckId: moveDeckId,
-        newParentId: moveTargetId,
-      });
-      await loadDecks();
+    const ok = await performMoveDeck(moveDeckId, moveTargetId);
+    if (ok) {
       setMoveDeckId(null);
       setMoveTargetId(null);
-    } catch (error) {
-      alert(`Fehler beim Verschieben: ${(error as Error).message}`);
     }
   };
 
@@ -489,7 +730,7 @@ export function App() {
         setHasFlippedCurrentCard(true);
         return;
       }
-      if (event.key >= '0' && event.key <= '5') {
+      if (event.key >= '0' && event.key <= '3') {
         if (!hasFlippedCurrentCard) return;
         handleReview(Number(event.key));
       }
@@ -689,26 +930,86 @@ export function App() {
           </DialogContent>
         </Dialog>
 
+        {/* Edit Card Dialog */}
+        <Dialog
+          open={editingCard !== null}
+          onOpenChange={(open) => !open && closeEditDialog()}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Karte bearbeiten</DialogTitle>
+              <DialogDescription>
+                Aktualisiere Frage, Antwort und Tags.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Input
+                placeholder="Frage / Prompt"
+                value={editFront}
+                onChange={(event) => setEditFront(event.target.value)}
+              />
+              <Textarea
+                placeholder="Antwort / Back"
+                value={editBack}
+                onChange={(event) => setEditBack(event.target.value)}
+              />
+              <Input
+                placeholder="Tags (comma-separated)"
+                value={editTags}
+                onChange={(event) => setEditTags(event.target.value)}
+              />
+              <div className="flex gap-2">
+                <Button onClick={handleUpdateCard}>Speichern</Button>
+                <Button variant="outline" onClick={closeEditDialog}>
+                  Abbrechen
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <Separator />
 
         <ScrollArea className="flex-1">
           <nav aria-label="Deck-Tree" className="space-y-2 pr-2">
-            {loading.decks ? (
-              <p className="text-sm text-muted-foreground">Lade Decks...</p>
-            ) : (
-              deckTree.map((deck) => (
-                <DeckTreeItem
-                  key={deck.id}
-                  node={deck}
-                  level={0}
-                  selectedId={selectedDeckId}
-                  onSelect={setSelectedDeckId}
-                  onMove={setMoveDeckId}
-                  onDelete={setDeleteDeckId}
-                />
-              ))
+            {draggingDeckId && (
+              <div
+                className={cn(
+                  'rounded-md border border-dashed border-border px-2 py-2 text-xs text-muted-foreground transition',
+                  dropTargetType === 'root' &&
+                    'border-primary bg-primary/10 text-foreground',
+                )}
+                onDragOver={handleRootDragOver}
+                onDragLeave={handleRootDragLeave}
+                onDrop={handleRootDrop}
+              >
+                Root (Oberste Ebene)
+              </div>
             )}
-          </nav>
+            {loading.decks ? (
+                  <p className="text-sm text-muted-foreground">Lade Decks...</p>
+                ) : (
+                  deckTree.map((deck) => (
+                    <DeckTreeItem
+                      key={deck.id}
+                      node={deck}
+                      level={0}
+                      selectedId={selectedDeckId}
+                      onSelect={setSelectedDeckId}
+                      onMove={setMoveDeckId}
+                      onDelete={setDeleteDeckId}
+                      draggingId={draggingDeckId}
+                      dropTargetId={dropTargetId}
+                      dropTargetType={dropTargetType}
+                      onDragStart={handleDeckDragStart}
+                      onDragEnd={handleDeckDragEnd}
+                      onDragOver={handleDeckDragOver}
+                      onDragLeave={handleDeckDragLeave}
+                      onDrop={handleDeckDrop}
+                    />
+                  ))
+                )}
+              </nav>
         </ScrollArea>
       </aside>
 
@@ -756,36 +1057,52 @@ export function App() {
               {dueCard && (
                 <CardShell className="flex flex-col justify-between gap-6">
                   <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-muted-foreground">
-                      Nächste Karte
-                    </span>
-                    <Badge variant="secondary">
-                      {dueCard ? 'Due jetzt' : 'Keine fälligen Karten'}
-                    </Badge>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-muted-foreground">
+                          Naechste Karte
+                        </span>
+                        {sessionMode === 'poor-repetition' && (
+                          <Badge variant="outline">Schwierige Karten</Badge>
+                        )}
+                      </div>
+                      <Badge variant="secondary">Due jetzt</Badge>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="rounded-lg border border-border bg-background/60 p-4 shadow-inner">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Frage
+                        </p>
+                        <div className="mt-2 whitespace-pre-wrap text-base text-foreground">
+                          {dueCard.front}
+                        </div>
+                      </div>
+                      <div
+                        className={cn(
+                          'rounded-lg border border-border bg-background/60 p-4 shadow-inner transition',
+                          reviewFlipped
+                            ? 'text-foreground'
+                            : 'text-muted-foreground',
+                        )}
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Antwort
+                        </p>
+                        <div className="mt-2 whitespace-pre-wrap text-base">
+                          {reviewFlipped
+                            ? dueCard.back
+                            : 'Antwort ist verborgen. Druecke Space.'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(dueCard?.tags ?? []).map((tag) => (
+                        <Badge key={tag} variant="outline">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
-                  <div
-                    className={cn(
-                      'min-h-[180px] rounded-lg border border-border bg-background/60 p-6 text-lg shadow-inner transition',
-                      reviewFlipped ? 'text-muted-foreground' : 'text-foreground',
-                    )}
-                  >
-                    {dueCard ? (
-                      reviewFlipped ? dueCard.back : dueCard.front
-                    ) : (
-                      <p className="text-muted-foreground">
-                        Für dieses Deck sind aktuell keine Karten fällig.
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(dueCard?.tags ?? []).map((tag) => (
-                      <Badge key={tag} variant="outline">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
                 <div className="space-y-4">
                   <Button
                     variant={!hasFlippedCurrentCard ? 'default' : 'outline'}
@@ -796,36 +1113,59 @@ export function App() {
                     }}
                     disabled={!dueCard}
                   >
-                    {reviewFlipped ? 'Frage zeigen' : 'Antwort aufdecken (Space)'}
+                    {reviewFlipped
+                      ? 'Antwort verbergen'
+                      : 'Antwort anzeigen (Space)'}
                   </Button>
                   {!hasFlippedCurrentCard && dueCard && (
                     <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-200">
                       💡 Decke zuerst die Antwort auf, dann bewerte dein Wissen
                     </div>
                   )}
-                  <div className="grid grid-cols-3 gap-2 md:grid-cols-6">
-                    {[0, 1, 2, 3, 4, 5].map((score) => (
-                      <Button
-                        key={score}
-                        variant="secondary"
-                        onClick={() => handleReview(score)}
-                        disabled={!dueCard || !hasFlippedCurrentCard}
-                        className={!hasFlippedCurrentCard ? 'cursor-not-allowed opacity-50' : ''}
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                    {ratingOptions.map((rating) => (
+                      <div
+                        key={rating.value}
+                        className="flex flex-col items-center gap-1"
                       >
-                        {score}
-                      </Button>
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleReview(rating.value)}
+                          disabled={!dueCard || !hasFlippedCurrentCard}
+                          className={
+                            !hasFlippedCurrentCard
+                              ? 'cursor-not-allowed opacity-50'
+                              : ''
+                          }
+                        >
+                          {rating.label}
+                        </Button>
+                        <span className="text-[11px] text-muted-foreground">
+                          {rating.hint}
+                        </span>
+                      </div>
                     ))}
                   </div>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Shortcuts: Space = Flip, 0-5 = Bewertung</span>
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                      onClick={handleSnooze}
-                      disabled={!dueCard}
-                    >
-                      Skip (S) · +10 min
-                    </button>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span>Shortcuts: Space = Antwort, 0-3 = Bewertung</span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                        onClick={handleSnooze}
+                        disabled={!dueCard}
+                      >
+                        Skip (S) · +10 min
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                        onClick={handleEndSession}
+                        disabled={!currentSession}
+                      >
+                        Fertig fuer heute
+                      </button>
+                    </div>
                   </div>
                 </div>
               </CardShell>
@@ -856,62 +1196,15 @@ export function App() {
                   )}
                   <div className="flex gap-2">
                     <Button
-                      onClick={() => {
-                        setSessionMode('regular');
-                        startSession();
-                        loadDueCard(selectedDeckId);
+                      onClick={async () => {
+                        await startSession();
+                        await loadDueCard(selectedDeckId);
                       }}
                     >
-                      Nochmal üben
+                      Neue Session starten
                     </Button>
                     <Button variant="outline" onClick={() => setActiveTab('browse')}>
                       Karten durchsuchen
-                    </Button>
-                  </div>
-                </CardShell>
-              )}
-
-              {/* Poor Card Repetition Prompt */}
-              {sessionMode === 'poor-repetition' && !dueCard && (
-                <CardShell className="flex flex-col items-center justify-center gap-6 p-12 text-center">
-                  <div className="text-6xl">🔄</div>
-                  <div>
-                    <h3 className="text-xl font-semibold">
-                      Schwierige Karten wiederholen?
-                    </h3>
-                    <p className="text-muted-foreground mt-2">
-                      Du hast {poorCardIds.length} Karte
-                      {poorCardIds.length !== 1 ? 'n' : ''} als schwierig markiert
-                      (Bewertung &lt; 3).
-                      <br />
-                      Möchtest du sie nochmal üben, um das Wissen zu festigen?
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={async () => {
-                        const nextCard =
-                          await window.cardcrafter.getDueCardWithPriority(
-                            selectedDeckId,
-                            poorCardIds,
-                          );
-                        if (nextCard) {
-                          setDueCard(nextCard);
-                          setReviewFlipped(false);
-                          setHasFlippedCurrentCard(false);
-                        }
-                      }}
-                    >
-                      Ja, nochmal üben
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={async () => {
-                        await endSession();
-                        await loadNextReviewInfo();
-                      }}
-                    >
-                      Nein, fertig für heute
                     </Button>
                   </div>
                 </CardShell>
@@ -1003,9 +1296,18 @@ export function App() {
                             {card.back}
                           </p>
                         </div>
-                        <Badge variant="secondary">
-                          {new Date(card.createdAt).toLocaleDateString()}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary">
+                            {new Date(card.createdAt).toLocaleDateString()}
+                          </Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openEditCard(card)}
+                          >
+                            Bearbeiten
+                          </Button>
+                        </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {card.tags.map((tag) => (

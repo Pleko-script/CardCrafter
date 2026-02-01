@@ -3,6 +3,7 @@ export const IPC_CHANNELS = {
   createDeck: 'decks:create',
   listCards: 'cards:list',
   createCard: 'cards:create',
+  updateCard: 'cards:update',
   getDueCard: 'review:next',
   reviewCard: 'review:rate',
   snoozeCard: 'review:snooze',
