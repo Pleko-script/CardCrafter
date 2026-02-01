@@ -35,8 +35,8 @@ export function MoveDeckDialog({
         <DialogHeader>
           <DialogTitle>Deck verschieben</DialogTitle>
           <DialogDescription>
-            Waehle einen neuen Ordner fuer dieses Deck oder "Root" fuer die oberste
-            Ebene.
+            Wähle einen neuen Ordner für dieses Deck oder „Hauptebene" für die
+            oberste Ebene.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -45,7 +45,7 @@ export function MoveDeckDialog({
             value={targetId ?? ''}
             onChange={(e) => onTargetChange(e.target.value || null)}
           >
-            <option value="">Root (Oberste Ebene)</option>
+            <option value="">Hauptebene</option>
             {decks
               .filter((deck) => deck.id !== moveDeckId)
               .map((deck) => (

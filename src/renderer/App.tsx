@@ -181,7 +181,7 @@ export function App() {
         setSelectedDeckId(deckId);
         return true;
       } catch (error) {
-        alert(`Fehler beim Verschieben: ${(error as Error).message}`);
+        alert('Das Deck konnte nicht verschoben werden. Bitte versuche es erneut.');
         return false;
       }
     },
@@ -236,7 +236,7 @@ export function App() {
 
       closeEditDialog();
     } catch (error) {
-      alert(`Fehler beim Speichern: ${(error as Error).message}`);
+      alert('Die Karte konnte nicht gespeichert werden. Bitte versuche es erneut.');
     }
   }, [
     editingCard,
@@ -453,7 +453,7 @@ export function App() {
       const preview = await window.cardcrafter.getDeletePreview(deckId);
       setDeletePreview(preview);
     } catch (error) {
-      alert(`Fehler beim Laden der Vorschau: ${(error as Error).message}`);
+      alert('Die Vorschau konnte nicht geladen werden. Bitte versuche es erneut.');
     }
   };
 
@@ -475,7 +475,7 @@ export function App() {
       setDeleteDeckId(null);
       setDeletePreview(null);
     } catch (error) {
-      alert(`Fehler beim Löschen: ${(error as Error).message}`);
+      alert('Das Deck konnte nicht gelöscht werden. Bitte versuche es erneut.');
     }
   };
 
@@ -635,10 +635,10 @@ export function App() {
           </div>
           <TabsList className="bg-secondary/70">
             <TabsTrigger value="review">
-              <BookOpen size={16} className="mr-2" /> Review
+              <BookOpen size={16} className="mr-2" /> Lernen
             </TabsTrigger>
             <TabsTrigger value="browse">
-              <LayoutGrid size={16} className="mr-2" /> Browse
+              <LayoutGrid size={16} className="mr-2" /> Durchsuchen
             </TabsTrigger>
             <TabsTrigger value="editor">
               <FileText size={16} className="mr-2" /> Editor
@@ -647,10 +647,10 @@ export function App() {
               <Import size={16} className="mr-2" /> Import
             </TabsTrigger>
             <TabsTrigger value="stats">
-              <Star size={16} className="mr-2" /> Stats
+              <Star size={16} className="mr-2" /> Statistiken
             </TabsTrigger>
             <TabsTrigger value="settings">
-              <Settings size={16} className="mr-2" /> Settings
+              <Settings size={16} className="mr-2" /> Einstellungen
             </TabsTrigger>
           </TabsList>
         </header>

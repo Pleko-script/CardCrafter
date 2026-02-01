@@ -23,7 +23,7 @@ export function BrowseTab({ cards, loading, onEditCard }: BrowseTabProps) {
             <div className="flex flex-wrap gap-2">
               <Input placeholder="Tag-Filter" className="w-40" />
               <Input placeholder="Status" className="w-32" />
-              <Input placeholder="Faellig bis" className="w-32" />
+              <Input placeholder="Fällig bis" className="w-32" />
             </div>
           </div>
           <div className="space-y-3">

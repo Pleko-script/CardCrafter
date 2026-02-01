@@ -63,7 +63,7 @@ export function ReviewTab({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-muted-foreground">
-                    Naechste Karte
+                    Nächste Karte
                   </span>
                   {sessionMode === 'poor-repetition' && (
                     <Badge variant="outline">Schwierige Karten</Badge>
@@ -72,7 +72,7 @@ export function ReviewTab({
                     <Badge variant="outline">Freie Session</Badge>
                   )}
                 </div>
-                <Badge variant="secondary">Due jetzt</Badge>
+                <Badge variant="secondary">Jetzt fällig</Badge>
               </div>
               <div className="space-y-3">
                 <div className="rounded-lg border border-border bg-background/60 p-4 shadow-inner">
@@ -95,7 +95,7 @@ export function ReviewTab({
                   <div className="mt-2 whitespace-pre-wrap text-base">
                     {reviewFlipped
                       ? dueCard.back
-                      : 'Antwort ist verborgen. Druecke Space.'}
+                      : 'Antwort ist verborgen. Drücke Space.'}
                   </div>
                 </div>
               </div>
@@ -147,7 +147,7 @@ export function ReviewTab({
                     onClick={onSnooze}
                     disabled={!dueCard}
                   >
-                    Skip (S) - +10 min
+                    Überspringen (S) - +10 Min
                   </button>
                   <button
                     type="button"
@@ -155,7 +155,7 @@ export function ReviewTab({
                     onClick={onEndSession}
                     disabled={!currentSessionActive}
                   >
-                    Fertig fuer heute
+                    Fertig für heute
                   </button>
                 </div>
               </div>
@@ -167,7 +167,7 @@ export function ReviewTab({
           <CardShell className="flex flex-col items-center justify-center gap-6 p-10 text-center">
             <div className="text-4xl">---</div>
             <div>
-              <h3 className="text-xl font-semibold">Keine faelligen Karten</h3>
+              <h3 className="text-xl font-semibold">Keine fälligen Karten</h3>
               <p className="mt-2 text-sm text-muted-foreground">
                 Du kannst trotzdem eine freie Lern-Session starten, um Karten zu
                 wiederholen.
@@ -195,15 +195,15 @@ export function ReviewTab({
             <div>
               <h3 className="text-2xl font-semibold">Sehr gut gemacht!</h3>
               <p className="text-muted-foreground mt-2">
-                Du hast alle faelligen Karten fuer dieses Deck durchgearbeitet.
+                Du hast alle fälligen Karten für dieses Deck durchgearbeitet.
               </p>
             </div>
             {nextReviewInfo?.nextDueAt && (
               <div className="rounded-lg border border-border bg-secondary/30 p-4 min-w-[250px]">
-                <p className="text-sm text-muted-foreground">Naechste Review-Session</p>
+                <p className="text-sm text-muted-foreground">Nächste Review-Session</p>
                 <p className="text-lg font-semibold mt-1">{nextReviewInfo.formattedTime}</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {nextReviewInfo.nextDueCardCount} Karten werden faellig
+                  {nextReviewInfo.nextDueCardCount} Karten werden fällig
                 </p>
               </div>
             )}
@@ -218,7 +218,7 @@ export function ReviewTab({
 
         <CardShell className="space-y-4">
           <div>
-            <h3 className="text-sm font-semibold text-muted-foreground">Heute faellig</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground">Heute fällig</h3>
             <p className="text-3xl font-semibold">{stats.dueToday}</p>
           </div>
           {nextReviewInfo?.nextDueAt && stats.dueNow === 0 && (
@@ -226,7 +226,7 @@ export function ReviewTab({
               <Separator />
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground">
-                  Naechste Review-Session
+                  Nächste Review-Session
                 </h3>
                 <p className="text-lg font-semibold mt-1">{nextReviewInfo.formattedTime}</p>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -238,11 +238,11 @@ export function ReviewTab({
           <Separator />
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Streak</span>
+              <span className="text-sm text-muted-foreground">Lernserie</span>
               <span className="text-sm font-semibold">{stats.streakDays} Tage</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Retention</span>
+              <span className="text-sm text-muted-foreground">Merkquote</span>
               <span className="text-sm font-semibold">{formatPercent(stats.retention)}</span>
             </div>
             <div className="flex items-center justify-between">

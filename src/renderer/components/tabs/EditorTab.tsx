@@ -33,17 +33,17 @@ export function EditorTab({
           <h3 className="text-lg font-semibold">Neue Karte</h3>
           <div className="space-y-3">
             <Input
-              placeholder="Frage / Prompt"
+              placeholder="Frage / Vorderseite"
               value={front}
               onChange={(event) => onFrontChange(event.target.value)}
             />
             <Textarea
-              placeholder="Antwort / Back"
+              placeholder="Antwort / Rückseite"
               value={back}
               onChange={(event) => onBackChange(event.target.value)}
             />
             <Input
-              placeholder="Tags (comma-separated)"
+              placeholder="Tags (kommagetrennt)"
               value={tags}
               onChange={(event) => onTagsChange(event.target.value)}
             />
@@ -52,15 +52,15 @@ export function EditorTab({
             <Button onClick={onSave}>
               <Sparkles size={16} /> Speichern
             </Button>
-            <Button variant="outline">Als Cloze</Button>
+            <Button variant="outline">Als Lückentext</Button>
           </div>
         </CardShell>
         <CardShell className="space-y-3">
-          <h4 className="text-sm font-semibold text-muted-foreground">Qualitaetsregeln</h4>
+          <h4 className="text-sm font-semibold text-muted-foreground">Qualitätsregeln</h4>
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li>Eine Karte = ein Fakt / Begriff / Schritt.</li>
             <li>Aktive Erinnerung statt Wiedererkennen.</li>
-            <li>Kurze, praezise Antworten.</li>
+            <li>Kurze, präzise Antworten.</li>
             <li>Listen aufteilen, Prozesse zerlegen.</li>
             <li>Erst verstehen, dann speichern.</li>
           </ul>

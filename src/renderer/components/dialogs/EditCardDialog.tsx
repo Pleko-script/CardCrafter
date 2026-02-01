@@ -45,17 +45,17 @@ export function EditCardDialog({
         </DialogHeader>
         <div className="space-y-4">
           <Input
-            placeholder="Frage / Prompt"
+            placeholder="Frage / Vorderseite"
             value={front}
             onChange={(event) => onFrontChange(event.target.value)}
           />
           <Textarea
-            placeholder="Antwort / Back"
+            placeholder="Antwort / Rückseite"
             value={back}
             onChange={(event) => onBackChange(event.target.value)}
           />
           <Input
-            placeholder="Tags (comma-separated)"
+            placeholder="Tags (kommagetrennt)"
             value={tags}
             onChange={(event) => onTagsChange(event.target.value)}
           />

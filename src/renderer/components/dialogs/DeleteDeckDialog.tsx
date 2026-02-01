@@ -31,9 +31,9 @@ export function DeleteDeckDialog({
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Deck loeschen</DialogTitle>
+          <DialogTitle>Deck löschen</DialogTitle>
           <DialogDescription>
-            Bist du sicher, dass du "{preview?.deckName}" loeschen moechtest?
+            Bist du sicher, dass du "{preview?.deckName}" löschen möchtest?
           </DialogDescription>
         </DialogHeader>
         {preview && (
@@ -43,7 +43,7 @@ export function DeleteDeckDialog({
                 Auswirkungen:
               </p>
               <ul className="mt-2 space-y-1 text-sm text-yellow-800 dark:text-yellow-300">
-                <li>- {preview.totalCardCount} Karten werden geloescht</li>
+                <li>- {preview.totalCardCount} Karten werden gelöscht</li>
                 {preview.childDeckCount > 0 && (
                   <li>- {preview.childDeckCount} Unter-Decks betroffen</li>
                 )}
@@ -65,10 +65,10 @@ export function DeleteDeckDialog({
                       className="mt-0.5"
                     />
                     <span className="text-sm">
-                      <strong>Alles loeschen</strong>
+                      <strong>Alles löschen</strong>
                       <br />
                       <span className="text-muted-foreground">
-                        Deck und alle Unter-Decks inkl. Karten loeschen
+                        Deck und alle Unter-Decks inkl. Karten löschen
                       </span>
                     </span>
                   </label>
@@ -84,7 +84,7 @@ export function DeleteDeckDialog({
                       <strong>Unter-Decks behalten</strong>
                       <br />
                       <span className="text-muted-foreground">
-                        Nur dieses Deck loeschen, Unter-Decks eine Ebene hochschieben
+                        Nur dieses Deck löschen, Unter-Decks eine Ebene hochschieben
                       </span>
                     </span>
                   </label>
@@ -94,7 +94,7 @@ export function DeleteDeckDialog({
 
             <div className="flex gap-2">
               <Button variant="destructive" onClick={onDelete}>
-                Deck loeschen
+                Deck löschen
               </Button>
               <Button variant="outline" onClick={onClose}>
                 Abbrechen

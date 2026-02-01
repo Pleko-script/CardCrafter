@@ -12,11 +12,11 @@ export function SettingsTab() {
         <CardShell className="space-y-4">
           <h3 className="text-lg font-semibold">OpenRouter</h3>
           <div className="space-y-3">
-            <Input placeholder="API Key (wird lokal gespeichert)" />
+            <Input placeholder="API-Schlüssel (nur lokal gespeichert)" />
             <Input placeholder="Modell (z.B. moonshotai/kimi-k2.5)" />
             <div className="grid grid-cols-2 gap-3">
-              <Input placeholder="Temperatur" />
-              <Input placeholder="Max Tokens" />
+              <Input placeholder="Temperatur (0-2)" />
+              <Input placeholder="Max. Tokens (Länge)" />
             </div>
           </div>
           <Button variant="outline" disabled>

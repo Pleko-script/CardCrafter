@@ -76,7 +76,7 @@ function DeckContextMenu({
                 setIsOpen(false);
               }}
             >
-              Deck loeschen...
+              Deck löschen...
             </button>
           </div>
         </>
@@ -255,7 +255,7 @@ function RootDropZone({ isOver }: { isOver: boolean }) {
         isOver && 'border-primary bg-primary/10 text-foreground',
       )}
     >
-      Root (Oberste Ebene)
+      Hauptebene
     </div>
   );
 }
