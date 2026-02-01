@@ -61,9 +61,6 @@ export function App() {
   const [nextReviewInfo, setNextReviewInfo] = React.useState<NextReviewInfo | null>(null);
   const [sessionMode, setSessionMode] = React.useState<'regular' | 'poor-repetition' | 'practice' | 'completed'>('regular');
   const [practicePoolIds, setPracticePoolIds] = React.useState<string[]>([]);
-  const [draggingDeckId, setDraggingDeckId] = React.useState<string | null>(null);
-  const [dropTargetId, setDropTargetId] = React.useState<string | null>(null);
-  const [dropTargetType, setDropTargetType] = React.useState<'root' | 'deck' | null>(null);
   const [moveDeckId, setMoveDeckId] = React.useState<string | null>(null);
   const [moveTargetId, setMoveTargetId] = React.useState<string | null>(null);
   const [deleteDeckId, setDeleteDeckId] = React.useState<string | null>(null);
@@ -189,98 +186,6 @@ export function App() {
       }
     },
     [loadDecks],
-  );
-
-  const resetDragState = React.useCallback(() => {
-    setDraggingDeckId(null);
-    setDropTargetId(null);
-    setDropTargetType(null);
-  }, []);
-
-  const handleDeckDragStart = React.useCallback(
-    (deckId: string, event: React.DragEvent<HTMLButtonElement>) => {
-      event.dataTransfer.setData('text/plain', deckId);
-      event.dataTransfer.effectAllowed = 'move';
-      setDraggingDeckId(deckId);
-      setDropTargetId(null);
-      setDropTargetType(null);
-    },
-    [],
-  );
-
-  const handleDeckDragEnd = React.useCallback(() => {
-    resetDragState();
-  }, [resetDragState]);
-
-  const handleDeckDragOver = React.useCallback(
-    (deckId: string, event: React.DragEvent<HTMLButtonElement>) => {
-      if (!draggingDeckId || draggingDeckId === deckId) return;
-      event.preventDefault();
-      setDropTargetId(deckId);
-      setDropTargetType('deck');
-    },
-    [draggingDeckId],
-  );
-
-  const handleDeckDragLeave = React.useCallback(
-    (deckId: string, event: React.DragEvent<HTMLButtonElement>) => {
-      if (dropTargetId !== deckId) return;
-      const related = event.relatedTarget as Node | null;
-      if (related && event.currentTarget.contains(related)) return;
-      setDropTargetId(null);
-      setDropTargetType(null);
-    },
-    [dropTargetId],
-  );
-
-  const handleDeckDrop = React.useCallback(
-    async (targetId: string, event: React.DragEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      const draggedId =
-        draggingDeckId ?? event.dataTransfer.getData('text/plain');
-      if (!draggedId || draggedId === targetId) {
-        resetDragState();
-        return;
-      }
-      await performMoveDeck(draggedId, targetId);
-      resetDragState();
-    },
-    [draggingDeckId, performMoveDeck, resetDragState],
-  );
-
-  const handleRootDragOver = React.useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (!draggingDeckId) return;
-      event.preventDefault();
-      setDropTargetId(null);
-      setDropTargetType('root');
-    },
-    [draggingDeckId],
-  );
-
-  const handleRootDragLeave = React.useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (dropTargetType !== 'root') return;
-      const related = event.relatedTarget as Node | null;
-      if (related && event.currentTarget.contains(related)) return;
-      setDropTargetType(null);
-    },
-    [dropTargetType],
-  );
-
-  const handleRootDrop = React.useCallback(
-    async (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      const draggedId =
-        draggingDeckId ?? event.dataTransfer.getData('text/plain');
-      if (!draggedId) {
-        resetDragState();
-        return;
-      }
-      await performMoveDeck(draggedId, null);
-      resetDragState();
-    },
-    [draggingDeckId, performMoveDeck, resetDragState],
   );
 
   const openEditCard = (card: Card) => {
@@ -708,17 +613,7 @@ export function App() {
             onSelect={setSelectedDeckId}
             onMove={setMoveDeckId}
             onDelete={setDeleteDeckId}
-            draggingId={draggingDeckId}
-            dropTargetId={dropTargetId}
-            dropTargetType={dropTargetType}
-            onDragStart={handleDeckDragStart}
-            onDragEnd={handleDeckDragEnd}
-            onDragOver={handleDeckDragOver}
-            onDragLeave={handleDeckDragLeave}
-            onDrop={handleDeckDrop}
-            onRootDragOver={handleRootDragOver}
-            onRootDragLeave={handleRootDragLeave}
-            onRootDrop={handleRootDrop}
+            onMoveDeck={performMoveDeck}
           />
         </ScrollArea>
       </aside>

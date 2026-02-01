@@ -1,10 +1,20 @@
-﻿import React from 'react';
+import React from 'react';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  DragStartEvent,
+  DragEndEvent,
+  DragOverEvent,
+} from '@dnd-kit/core';
 import { ChevronDown, FolderTree } from 'lucide-react';
 
 import type { Deck } from '../../../shared/types';
 import { cn } from '../../lib/utils';
-
-export type DeckDragTarget = 'root' | 'deck' | null;
 
 type DeckNode = Deck & { children: DeckNode[] };
 
@@ -15,17 +25,7 @@ type DeckTreeProps = {
   onSelect: (id: string) => void;
   onMove: (deckId: string) => void;
   onDelete: (deckId: string) => void;
-  draggingId: string | null;
-  dropTargetId: string | null;
-  dropTargetType: DeckDragTarget;
-  onDragStart: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
-  onDragEnd: () => void;
-  onDragOver: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
-  onDragLeave: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
-  onDrop: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
-  onRootDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
-  onRootDragLeave: (event: React.DragEvent<HTMLDivElement>) => void;
-  onRootDrop: (event: React.DragEvent<HTMLDivElement>) => void;
+  onMoveDeck: (deckId: string, newParentId: string | null) => Promise<boolean>;
 };
 
 function DeckContextMenu({
@@ -106,21 +106,30 @@ function buildDeckTree(decks: Deck[]): DeckNode[] {
   return roots;
 }
 
-function DeckTreeItem({
+function isDescendant(
+  deckMap: Map<string, DeckNode>,
+  parentId: string,
+  childId: string,
+): boolean {
+  const parent = deckMap.get(parentId);
+  if (!parent) return false;
+  for (const child of parent.children) {
+    if (child.id === childId || isDescendant(deckMap, child.id, childId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function DraggableDeckItem({
   node,
   level,
   selectedId,
   onSelect,
   onMove,
   onDelete,
-  draggingId,
-  dropTargetId,
-  dropTargetType,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDragLeave,
-  onDrop,
+  activeDragId,
+  overDropId,
 }: {
   node: DeckNode;
   level: number;
@@ -128,75 +137,93 @@ function DeckTreeItem({
   onSelect: (id: string) => void;
   onMove: (deckId: string) => void;
   onDelete: (deckId: string) => void;
-  draggingId: string | null;
-  dropTargetId: string | null;
-  dropTargetType: DeckDragTarget;
-  onDragStart: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
-  onDragEnd: () => void;
-  onDragOver: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
-  onDragLeave: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
-  onDrop: (deckId: string, event: React.DragEvent<HTMLButtonElement>) => void;
+  activeDragId: string | null;
+  overDropId: string | null;
 }) {
   const [open, setOpen] = React.useState(true);
   const hasChildren = node.children.length > 0;
 
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
+    id: node.id,
+    data: { node },
+  });
+
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `drop-${node.id}`,
+    data: { node },
+  });
+
+  const combinedRef = (element: HTMLDivElement | null) => {
+    setDragRef(element);
+    setDropRef(element);
+  };
+
+  const isDropTarget = overDropId === `drop-${node.id}`;
+
   return (
     <div>
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          className={cn(
-            'flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted',
-            selectedId === node.id && 'bg-secondary text-foreground',
-            dropTargetType === 'deck' &&
-              dropTargetId === node.id &&
-              'ring-2 ring-primary/70',
-            draggingId === node.id && 'opacity-60',
-          )}
-          style={{ paddingLeft: 12 + level * 14 }}
-          onClick={() => onSelect(node.id)}
-          aria-current={selectedId === node.id ? 'page' : undefined}
-          draggable
-          onDragStart={(event) => onDragStart(node.id, event)}
-          onDragEnd={onDragEnd}
-          onDragOver={(event) => onDragOver(node.id, event)}
-          onDragLeave={(event) => onDragLeave(node.id, event)}
-          onDrop={(event) => onDrop(node.id, event)}
-          aria-grabbed={draggingId === node.id}
-        >
-          {hasChildren && (
-            <span
-              className={cn(
-                'text-muted-foreground transition',
-                open ? 'rotate-90' : '',
-              )}
-              aria-hidden="true"
-            >
-              <ChevronDown size={16} />
-            </span>
-          )}
-          <FolderTree size={16} className="text-muted-foreground" />
-          <span className="flex-1">{node.name}</span>
-          {hasChildren && (
-            <button
-              type="button"
-              className="text-xs text-muted-foreground hover:text-foreground"
-              onClick={(event) => {
-                event.stopPropagation();
-                setOpen((prev) => !prev);
-              }}
-              aria-label={open ? 'Unterdecks einklappen' : 'Unterdecks ausklappen'}
-            >
-              {open ? '-' : '+'}
-            </button>
-          )}
-        </button>
-        <DeckContextMenu deck={node} onMove={onMove} onDelete={onDelete} />
+      <div
+        ref={combinedRef}
+        role="button"
+        tabIndex={0}
+        className={cn(
+          'flex items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted cursor-grab',
+          selectedId === node.id && 'bg-secondary text-foreground',
+          isDropTarget && 'ring-2 ring-primary/70 bg-primary/10',
+          isDragging && 'opacity-50 cursor-grabbing',
+          activeDragId && activeDragId !== node.id && 'cursor-pointer',
+        )}
+        style={{ paddingLeft: 12 + level * 14 }}
+        onClick={() => !isDragging && onSelect(node.id)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onSelect(node.id);
+          }
+        }}
+        {...attributes}
+        {...listeners}
+      >
+        {hasChildren && (
+          <span
+            className={cn(
+              'text-muted-foreground transition',
+              open ? 'rotate-90' : '',
+            )}
+            aria-hidden="true"
+          >
+            <ChevronDown size={16} />
+          </span>
+        )}
+        <FolderTree size={16} className="text-muted-foreground" />
+        <span className="flex-1">{node.name}</span>
+        {hasChildren && (
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground"
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen((prev) => !prev);
+            }}
+            aria-label={open ? 'Unterdecks einklappen' : 'Unterdecks ausklappen'}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {open ? '-' : '+'}
+          </button>
+        )}
+        <div onPointerDown={(e) => e.stopPropagation()}>
+          <DeckContextMenu deck={node} onMove={onMove} onDelete={onDelete} />
+        </div>
       </div>
       {hasChildren && open && (
         <div className="mt-1 space-y-1">
           {node.children.map((child) => (
-            <DeckTreeItem
+            <DraggableDeckItem
               key={child.id}
               node={child}
               level={level + 1}
@@ -204,18 +231,40 @@ function DeckTreeItem({
               onSelect={onSelect}
               onMove={onMove}
               onDelete={onDelete}
-              draggingId={draggingId}
-              dropTargetId={dropTargetId}
-              dropTargetType={dropTargetType}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onDragOver={onDragOver}
-              onDragLeave={onDragLeave}
-              onDrop={onDrop}
+              activeDragId={activeDragId}
+              overDropId={overDropId}
             />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function RootDropZone({ isOver }: { isOver: boolean }) {
+  const { setNodeRef } = useDroppable({
+    id: 'drop-root',
+    data: { isRoot: true },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'rounded-md border border-dashed border-border px-2 py-2 text-xs text-muted-foreground transition',
+        isOver && 'border-primary bg-primary/10 text-foreground',
+      )}
+    >
+      Root (Oberste Ebene)
+    </div>
+  );
+}
+
+function DragOverlayContent({ node }: { node: DeckNode }) {
+  return (
+    <div className="flex items-center gap-2 rounded-md bg-background border border-border shadow-lg px-3 py-2 text-sm">
+      <FolderTree size={16} className="text-muted-foreground" />
+      <span>{node.name}</span>
     </div>
   );
 }
@@ -227,59 +276,117 @@ export function DeckTree({
   onSelect,
   onMove,
   onDelete,
-  draggingId,
-  dropTargetId,
-  dropTargetType,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  onRootDragOver,
-  onRootDragLeave,
-  onRootDrop,
+  onMoveDeck,
 }: DeckTreeProps) {
+  const [activeDragId, setActiveDragId] = React.useState<string | null>(null);
+  const [overDropId, setOverDropId] = React.useState<string | null>(null);
+
   const deckTree = React.useMemo(() => buildDeckTree(decks), [decks]);
+  const deckMap = React.useMemo(() => {
+    const map = new Map<string, DeckNode>();
+    const addToMap = (nodes: DeckNode[]) => {
+      for (const node of nodes) {
+        map.set(node.id, node);
+        addToMap(node.children);
+      }
+    };
+    addToMap(deckTree);
+    return map;
+  }, [deckTree]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+  );
+
+  const activeDragNode = activeDragId ? deckMap.get(activeDragId) : null;
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    setOverDropId(event.over?.id as string | null);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragId(null);
+    setOverDropId(null);
+
+    if (!over) return;
+
+    const draggedId = active.id as string;
+    const overId = over.id as string;
+
+    // Dropping on root
+    if (overId === 'drop-root') {
+      const draggedDeck = deckMap.get(draggedId);
+      if (draggedDeck && draggedDeck.parentId !== null) {
+        await onMoveDeck(draggedId, null);
+      }
+      return;
+    }
+
+    // Dropping on another deck
+    if (overId.startsWith('drop-')) {
+      const targetId = overId.replace('drop-', '');
+
+      // Don't drop on itself
+      if (draggedId === targetId) return;
+
+      // Don't drop on own descendant
+      if (isDescendant(deckMap, draggedId, targetId)) return;
+
+      // Don't move if already a child of target
+      const draggedDeck = deckMap.get(draggedId);
+      if (draggedDeck && draggedDeck.parentId === targetId) return;
+
+      await onMoveDeck(draggedId, targetId);
+    }
+  };
+
+  const handleDragCancel = () => {
+    setActiveDragId(null);
+    setOverDropId(null);
+  };
 
   return (
-    <nav aria-label="Deck-Tree" className="space-y-2 pr-2">
-      {draggingId && (
-        <div
-          className={cn(
-            'rounded-md border border-dashed border-border px-2 py-2 text-xs text-muted-foreground transition',
-            dropTargetType === 'root' &&
-              'border-primary bg-primary/10 text-foreground',
-          )}
-          onDragOver={onRootDragOver}
-          onDragLeave={onRootDragLeave}
-          onDrop={onRootDrop}
-        >
-          Root (Oberste Ebene)
-        </div>
-      )}
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Lade Decks...</p>
-      ) : (
-        deckTree.map((deck) => (
-          <DeckTreeItem
-            key={deck.id}
-            node={deck}
-            level={0}
-            selectedId={selectedId}
-            onSelect={onSelect}
-            onMove={onMove}
-            onDelete={onDelete}
-            draggingId={draggingId}
-            dropTargetId={dropTargetId}
-            dropTargetType={dropTargetType}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-          />
-        ))
-      )}
-    </nav>
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <nav aria-label="Deck-Tree" className="space-y-2 pr-2">
+        {activeDragId && (
+          <RootDropZone isOver={overDropId === 'drop-root'} />
+        )}
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Lade Decks...</p>
+        ) : (
+          deckTree.map((deck) => (
+            <DraggableDeckItem
+              key={deck.id}
+              node={deck}
+              level={0}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              onMove={onMove}
+              onDelete={onDelete}
+              activeDragId={activeDragId}
+              overDropId={overDropId}
+            />
+          ))
+        )}
+      </nav>
+      <DragOverlay>
+        {activeDragNode ? <DragOverlayContent node={activeDragNode} /> : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
